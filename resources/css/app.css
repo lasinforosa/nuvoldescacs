@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Estils personalitzats per al tauler d'escacs */
+
+
+
+/* Quan es ressalta una casella */
+.highlight-white { box-shadow: inset 0 0 3px 3px yellow; }
+.highlight-black { box-shadow: inset 0 0 3px 3px yellow; }
