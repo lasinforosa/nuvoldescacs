@@ -40,36 +40,31 @@ class PgnParserService
             $trimmedLine = trim($line);
 
             // La teva regla: ignorem línies de "soroll"
-            if (empty($trimmedLine) || strpos($trimmedLine, '"""') === 0) {
-                // Si trobem una línia en blanc DESPRÉS d'haver començat a llegir jugades,
-                // considerem que la partida ha acabat.
-                if ($state === 'reading_moves' && empty($trimmedLine)) {
-                    break;
+            if (empty($trimmedLine) || strpos($trimmedLine, '"""') === 0 || strpos($trimmedLine, '===') === 0) {
+                // Si trobem una línia en blanc DESPRÉS d'haver llegit capçaleres,
+                // és el separador definitiu cap a les jugades.
+                if (empty($trimmedLine) && $state === 'reading_headers' && !empty($this->headers)) {
+                    $state = 'reading_moves';
                 }
                 continue;
             }
 
+            // Si encara estem a l'estat de capçaleres i la línia comença amb '['
             if ($state === 'reading_headers' && strpos($trimmedLine, '[') === 0) {
-                // Estem llegint una capçalera
                 if (preg_match('/\[([A-Za-z]+)\s+"([^"]*)"\]/', $trimmedLine, $matches)) {
                     $tag = $matches[1];
                     $value = $matches[2];
-                    // DEBUG
-                    // dd($tag . ": " . $value);
                     if (in_array($tag, self::KNOWN_HEADERS)) {
                         $this->headers[$tag] = $value;
                     } else {
                         $unknownHeaders[] = $trimmedLine;
-                        // DEBUG
-                        // dd($trimmedLine);
                     }
                 }
             } else {
-                // Si la línia no és una capçalera, canviem a l'estat de llegir jugades
+                // Si la línia no és una capçalera, canviem d'estat (si no ho hem fet ja)
+                // i la considerem part de les jugades.
                 $state = 'reading_moves';
                 $rawMovetextLines[] = $trimmedLine;
-                // DEBUG
-                // dd($trimmedLine);
             }
         }
 

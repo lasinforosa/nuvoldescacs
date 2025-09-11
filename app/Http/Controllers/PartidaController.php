@@ -122,21 +122,43 @@ class PartidaController extends Controller
         $request->validate(['pgn_file' => 'required|file|mimes:pgn,txt']);
         $contingutPgn = file_get_contents($request->file('pgn_file')->getRealPath());
 
-        // Pas 1: El Controlador fa la feina de separar el fitxer en partides individuals.
-        // Aquesta expressió regular és la clau: busca el text que comença amb "[Event"
-        $partidesText = preg_split('/(?=\[Event)/', $contingutPgn, -1, \PREG_SPLIT_NO_EMPTY);
-        
-        if (empty($partidesText)) {
-            return back()->withErrors('El fitxer PGN no conté cap partida que es pugui reconèixer.');
+         // --- NOVA LÒGICA DE SEPARACIÓ MANUAL ---
+        $lines = explode("\n", str_replace("\r", "", $contingutPgn));
+        $partidesText = [];
+        $currentPgn = '';
+
+        // DEBUG
+        // dd($lines);
+
+        foreach ($lines as $line) {
+            // === LA TEVA CORRECCIÓ APLICADA ===
+            if (preg_match('/^\[Event(\s+|")/', trim($line)) && !empty(trim($currentPgn))) {
+                $partidesText[] = $currentPgn;
+                $currentPgn = '';
+            }
+            $currentPgn .= $line . "\n";
         }
         
         // DEBUG
-        dd($partidesText);
+        // dd($partidesText);
+
+        // Afegim l'última partida del fitxer
+        if (!empty(trim($currentPgn))) {
+            $partidesText[] = $currentPgn;
+        }
+
+        if (empty($partidesText)) {
+            return back()->withErrors('El fitxer PGN no conté cap partida que es pugui reconèixer.');
+        }
+        // --- FI DE LA NOVA LÒGICA ---
 
         $partidesImportades = 0;
         $errors = [];
-        $failedPgns = []; // NOU: Array per guardar el text de les partides fallides
-        $identitatsCache = []; // Cache per a aquesta importació
+        $failedPgns = [];
+        $identitatsCache = [];
+        
+        // DEBUG
+        // dd($partidesText);
 
         // Funció auxiliar (la mateixa que a 'store' i 'update')
         $findOrCreateIdentity = function(string $nomJugador) use (&$identitatsCache): ?int {
@@ -167,7 +189,7 @@ class PartidaController extends Controller
                 $movetext = $parser->getMovetext(); 
 
                 if (empty($movetext) || empty($headers) || !isset($headers['White']) || !isset($headers['Black'])) {
-                    throw new \Exception("Dades essencials (jugadors o jugades) no trobades.");
+                    throw new \Exception("Dades essencials no trobades.");
                 }
                 
                 $nomBlanques = $headers['White'];
