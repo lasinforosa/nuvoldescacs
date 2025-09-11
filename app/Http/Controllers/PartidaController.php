@@ -135,7 +135,7 @@ class PartidaController extends Controller
             return response()->json(['error' => 'Error processant el PGN: ' . $e->getMessage()], 500);
         }
     }
-    
+
     /**
      * Handle the uploaded PGN file.
      */
@@ -144,136 +144,71 @@ class PartidaController extends Controller
         $request->validate(['pgn_file' => 'required|file|mimes:pgn,txt']);
         $contingutPgn = file_get_contents($request->file('pgn_file')->getRealPath());
 
-         // --- NOVA LÒGICA DE SEPARACIÓ MANUAL ---
+        // --- INICI DE LA LÒGICA DE SEPARACIÓ MANUAL I ROBUSTA ---
         $lines = explode("\n", str_replace("\r", "", $contingutPgn));
         $partidesText = [];
         $currentPgn = '';
 
-        // DEBUG
-        // dd($lines);
-
         foreach ($lines as $line) {
-            // === LA TEVA CORRECCIÓ APLICADA ===
+            // La condició exacta: la línia comença amb '[Event' seguit d'un espai o cometes
             if (preg_match('/^\[Event(\s+|")/', trim($line)) && !empty(trim($currentPgn))) {
                 $partidesText[] = $currentPgn;
-                $currentPgn = '';
+                $currentPgn = ''; // Reiniciem per a la nova partida
             }
             $currentPgn .= $line . "\n";
         }
-        
-        // DEBUG
-        // dd($partidesText);
-
-        // Afegim l'última partida del fitxer
+        // Afegim l'última partida que quedava al buffer
         if (!empty(trim($currentPgn))) {
             $partidesText[] = $currentPgn;
         }
-
+        // --- FI DE LA LÒGICA DE SEPARACIÓ ---
+        
         if (empty($partidesText)) {
             return back()->withErrors('El fitxer PGN no conté cap partida que es pugui reconèixer.');
         }
-        // --- FI DE LA NOVA LÒGICA ---
 
         $partidesImportades = 0;
         $errors = [];
         $failedPgns = [];
         $identitatsCache = [];
-        
-        // DEBUG
-        // dd($partidesText);
 
-        // Funció auxiliar (la mateixa que a 'store' i 'update')
-        $findOrCreateIdentity = function(string $nomJugador) use (&$identitatsCache): ?int {
-            $nomJugador = trim($nomJugador);
-            if (empty($nomJugador) || $nomJugador === '?') return null;
-            if (isset($identitatsCache[$nomJugador])) { return $identitatsCache[$nomJugador]; }
-            $identitat = \App\Models\IdentitatJugador::where('nom', $nomJugador)->first();
-            if ($identitat) {
-                $identitatsCache[$nomJugador] = $identitat->id_identitat;
-                return $identitat->id_identitat;
-            } 
-            $persona = \App\Models\Persona::create();
-            $novaIdentitat = $persona->identitats()->create(['nom' => $nomJugador]);
-            $identitatsCache[$nomJugador] = $novaIdentitat->id_identitat;
-            return $novaIdentitat->id_identitat;
-        };
-
-        // Pas 2: Iterem per cada text de partida individual
         foreach ($partidesText as $index => $pgnIndividual) {
             if (empty(trim($pgnIndividual))) continue;
 
             try {
-                DB::beginTransaction();
-                
-                // Pas 3: Passem CADA partida individual al nostre parser especialista
-                $parser = new PgnParserService($pgnIndividual);
-                $headers = $parser->getHeaders();
-                $movetext = $parser->getMovetext(); 
-
-                if (empty($movetext) || empty($headers) || !isset($headers['White']) || !isset($headers['Black'])) {
-                    throw new \Exception("Dades essencials no trobades.");
-                }
-                
-                $nomBlanques = $headers['White'];
-                $nomNegres = $headers['Black'];
-
-                $idBlanques = $findOrCreateIdentity($nomBlanques);
-                $idNegres = $findOrCreateIdentity($nomNegres);
-
-                Partida::create([
-                    'event' => $headers['Event'] ?? null,
-                    'site' => $headers['Site'] ?? null,
-                    'data_partida' => isset($headers['Date']) ? preg_replace('/[^0-9-]/', '', str_replace('.', '-', $headers['Date'])) : null,
-                    'ronda' => $headers['Round'] ?? null,
-                    'resultat' => $headers['Result'] ?? '*',
-                    'eco' => $headers['ECO'] ?? null,
-                    'camps_extra' => $headers['camps_extra'] ?? null,
-                    'titol_blanques' => $headers['WhiteTitle'] ?? null,
-                    'titol_negres' => $headers['BlackTitle'] ?? null,
-                    'id_identitat_blanques' => $idBlanques,
-                    'id_identitat_negres' => $idNegres,
-                    'elo_blanques' => $headers['WhiteElo'] ?? null,
-                    'elo_negres' => $headers['BlackElo'] ?? null,
-                    'pgn_moves' => $movetext,
-                    'id_propietari' => auth()->id(),
-                    'estatus' => 'privada',
-                ]);
-
-                DB::commit();
+                // Utilitzem la nostra funció centralitzada per processar i guardar
+                $this->processAndSavePgn($pgnIndividual, $identitatsCache);
                 $partidesImportades++;
-
             } catch (\Exception $e) {
-                DB::rollBack();
-                $failedPgns[] = $pgnIndividual; 
+                // Si la funció falla, guardem el PGN original i l'error
+                $failedPgns[] = $pgnIndividual;
                 $errors[] = "Error a la partida #" . ($index + 1) . ": " . $e->getMessage();
             }
         }
-
-        // Pas 4: Generem el missatge i el fitxer d'errors (si cal)
+        
+        $errorFile = null;
         if (!empty($failedPgns)) {
             $filename = date('Ymd_His') . '_errors_import.pgn';
             $errorContent = implode("\n\n", $failedPgns);
             Storage::disk('local')->put('imports/' . $filename, $errorContent);
+            $errorFile = $filename;
         }
 
         $missatge = "";
-
-        // Redirigim amb un missatge d'èxit o d'error
         if ($partidesImportades > 0) {
             $missatge = "S'han importat {$partidesImportades} partides correctament.";
-            if (!empty($failedPgns)) {
+            if ($errorFile) {
                 $missatge .= " Algunes partides han fallat. S'ha generat un fitxer d'errors.";
             }
             return redirect()->route('partides.index')->with('success', $missatge);
         } else {
             $errorMsg = 'No s\'ha pogut importar cap partida del fitxer.';
-            if (!empty($failedPgns)) {
+            if ($errorFile) {
                 $errorMsg .= " S'ha generat un fitxer d'errors.";
             }
             return redirect()->route('partides.import.form')->withErrors($errorMsg);
         }
     }
-
 
     public function store(Request $request)
     {
@@ -485,4 +420,97 @@ class PartidaController extends Controller
         $partida->delete();
         return redirect()->route('partides.index')->with('success', 'Partida esborrada correctament.');
     }
+
+    public function handlePaste(Request $request)
+    {
+        $request->validate(['pgn_text' => 'required|string']);
+        $pgnText = $request->input('pgn_text');
+
+        // Intentem separar per si s'han enganxat múltiples partides, però només agafem la primera
+        $partidesText = preg_split('/(?=\[Event(\s+|"))/', $pgnText, -1, \PREG_SPLIT_NO_EMPTY);
+        if (empty($partidesText)) {
+            return back()->withErrors('El text PGN no conté cap partida reconeixible.');
+        }
+        $pgnIndividual = $partidesText[0];
+
+        try {
+            // Cridem a la nostra funció privada centralitzada
+            $cache = []; // Passem una cache buida
+            $this->processAndSavePgn($pgnIndividual, $cache);
+        } catch (\Exception $e) {
+            // Si falla, tornem al formulari de creació amb l'error
+            return redirect()->route('partides.create')
+                             ->withInput() // Manté el text que l'usuari havia enganxat
+                             ->withErrors('Error al processar el PGN: ' . $e->getMessage());
+        }
+
+        // Si tot va bé, redirigim a la llista amb un missatge d'èxit
+        return redirect()->route('partides.index')->with('success', 'Partida creada correctament des del PGN.');
+    }
+
+    // --- INICI DE LES FUNCIONS PRIVADES CENTRALITZADES ---
+
+    private function findOrCreateIdentity(string $nomJugador, array &$cache): ?int
+    {
+        $nomJugador = trim($nomJugador);
+        if (empty($nomJugador) || $nomJugador === '?') return null;
+
+        if (isset($cache[$nomJugador])) { return $cache[$nomJugador]; }
+
+        $identitat = IdentitatJugador::where('nom', $nomJugador)->first();
+        if ($identitat) {
+            $cache[$nomJugador] = $identitat->id_identitat;
+            return $identitat->id_identitat;
+        } 
+        
+        $persona = Persona::create();
+        $novaIdentitat = $persona->identitats()->create(['nom' => $nomJugador]);
+        $cache[$nomJugador] = $novaIdentitat->id_identitat;
+        return $novaIdentitat->id_identitat;
+    }
+
+    private function processAndSavePgn(string $pgnIndividual, array &$identitatsCache)
+    {
+        // AQUESTA ÉS LA FUNCIÓ QUE FALTAVA
+        DB::beginTransaction();
+        try {
+            $parser = new PgnParserService($pgnIndividual);
+            $headers = $parser->getHeaders();
+            $movetext = $parser->getMovetext(); 
+
+            if (empty($movetext) || !isset($headers['White']) || !isset($headers['Black'])) {
+                throw new \Exception("Dades essencials (jugadors o jugades) no trobades.");
+            }
+
+            $idBlanques = $this->findOrCreateIdentity($headers['White'], $identitatsCache);
+            $idNegres = $this->findOrCreateIdentity($headers['Black'], $identitatsCache);
+
+            Partida::create([
+                'event' => $headers['Event'] ?? null,
+                'site' => $headers['Site'] ?? null,
+                'data_partida' => isset($headers['Date']) ? preg_replace('/[^0-9-]/', '', str_replace('.', '-', $headers['Date'])) : null,
+                'ronda' => $headers['Round'] ?? null,
+                'resultat' => $headers['Result'] ?? '*',
+                'eco' => $headers['ECO'] ?? null,
+                'camps_extra' => $headers['camps_extra'] ?? null,
+                'titol_blanques' => $headers['WhiteTitle'] ?? null,
+                'titol_negres' => $headers['BlackTitle'] ?? null,
+                'id_identitat_blanques' => $idBlanques,
+                'id_identitat_negres' => $idNegres,
+                'elo_blanques' => $headers['WhiteElo'] ?? null,
+                'elo_negres' => $headers['BlackElo'] ?? null,
+                'pgn_moves' => $movetext,
+                'id_propietari' => auth()->id(),
+                'estatus' => 'privada',
+            ]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            // Propaguem l'excepció perquè la funció que crida (handleImport) sàpiga que ha fallat
+            throw $e;
+        }
+    }
+    
+    // --- FI DE LES FUNCIONS PRIVADES ---
 }

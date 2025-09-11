@@ -13,4 +13,4 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::post('/parse-pgn', [PartidaController::class, 'parsePgnFromText']);
+// Route::post('/parse-pgn', [PartidaController::class, 'parsePgnFromText']);

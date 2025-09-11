@@ -10,24 +10,23 @@
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 bg-white border-b border-gray-200">
 
-                    <!-- NOU: Secció per enganxar PGN -->
-                    <div class="mb-6 p-4 bg-gray-50 rounded-lg border">
-                        <h4 class="font-semibold mb-2">O Enganxa un PGN aquí</h4>
-                        <textarea id="pgn-paste-area" class="w-full h-32 font-mono text-sm border-gray-300 rounded-md" placeholder="[Event &quot;...&quot;]&#10;[Site &quot;...&quot;]&#10;...&#10;1. e4 e5 ..."></textarea>
-                        <button type="button" id="loadPgnFromPaste" class="mt-2 inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md text-xs uppercase font-semibold hover:bg-blue-800">Carregar PGN</button>
-                    </div>
-
-                    @if ($errors->any())
-                        <div class="mb-4 p-3 bg-red-100 text-red-700 rounded-lg">
-                            <strong>Ui! Alguna cosa ha anat malament.</strong>
-                            <ul class="list-disc list-inside">
-                                @foreach ($errors->all() as $error)
-                                    <li>{{ $error }}</li>
-                                @endforeach
-                            </ul>
+                    <!-- NOU: Formulari independent per al "paste" -->
+                    <form method="POST" action="{{ route('partides.paste') }}">
+                        @csrf
+                        <div class="mb-6 p-4 bg-gray-50 rounded-lg border">
+                            <h4 class="font-semibold mb-2">O Enganxa un PGN aquí per a Creació Ràpida</h4>
+                            <textarea name="pgn_text" class="w-full h-32 font-mono text-sm border-gray-300 rounded-md" required placeholder="[Event &quot;...&quot;]..."></textarea>
+                            <button type="submit" class="mt-2 inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md text-xs uppercase font-semibold hover:bg-blue-800">
+                                Crear Partida des de PGN
+                            </button>
                         </div>
-                    @endif
+                    </form>
 
+                    <hr class="my-6">
+
+                    <h3 class="text-lg font-medium mb-4">Creació Manual</h3>
+                    
+                    <!-- El teu formulari de creació manual (el que ja teníem) comença aquí -->
                     <form method="POST" action="{{ route('partides.store') }}">
                         @csrf
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
