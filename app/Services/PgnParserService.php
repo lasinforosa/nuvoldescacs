@@ -31,42 +31,38 @@ class PgnParserService
 
     private function parseSingleGame(string $pgn)
     {
-        $lines = explode("\n", str_replace("\r", "", $pgn));
         $headerLines = [];
         $moveLines = [];
-        $readingHeaders = true;
+        
+        // Separem el text en línies
+        $lines = explode("\n", str_replace("\r", "", $pgn));
+
+        $isReadingHeaders = true;
 
         // Pas 1: Separem el bloc de capçaleres del de jugades
-        foreach ($lines as $line) {
+         foreach ($lines as $line) {
             $trimmedLine = trim($line);
 
-            // Si la línia està buida, és el separador
-            if (empty($trimmedLine)) {
-                if ($readingHeaders && !empty($headerLines)) {
-                    $readingHeaders = false; // Deixem de llegir capçaleres
-                }
-                // Si ja estem llegint jugades, un salt de línia és part del PGN
-                if (!$readingHeaders) {
-                    $moveLines[] = $line;
-                }
+            // Si la línia està buida i ja tenim capçaleres, canviem a llegir jugades
+            if (empty($trimmedLine) && !empty($headerLines)) {
+                $isReadingHeaders = false;
                 continue;
             }
 
-            if ($readingHeaders && strpos($trimmedLine, '[') === 0) {
+            if ($isReadingHeaders && strpos($trimmedLine, '[') === 0) {
                 $headerLines[] = $trimmedLine;
-            } else {
-                // Hem trobat la primera línia que no és capçalera
-                $readingHeaders = false;
-                $moveLines[] = $line;
+            } elseif (!empty($trimmedLine)) {
+                // Qualsevol línia amb contingut que no sigui una capçalera, inicia les jugades
+                $isReadingHeaders = false;
+                $moveLines[] = $trimmedLine;
             }
         }
-        
-        
-        // Processem les capçaleres que hem trobat
-        $this->parseHeaders($headerLines);
 
-        // Unim les línies de jugades, preservant el format original
-        $this->movetext = trim(implode("\n", $moveLines));
+        $this->parseHeaders($headerLines);
+        
+        // Unim les línies de jugades i netegem el resultat final
+        $movetext = implode("\n", $moveLines);
+        $this->movetext = trim(preg_replace('/\s*(1-0|0-1|1\/2-1\/2|\*)\s*$/', '', $movetext));
     }
 
     private function parseHeaders(array $headerLines)

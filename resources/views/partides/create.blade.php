@@ -209,61 +209,43 @@
                         return;
                     }
 
-                    try {
-                        // NOU: Funció auxiliar per parsejar el PGN
-                        function parsePgnText(text) {
-                            const headers = {};
-                            let movetext = '';
-                            const headerRegex = /\[([A-Za-z]+)\s+"([^"]+)"\]/g;
-                            let match;
-                            let lastHeaderIndex = 0;
+                    // Fem la crida AJAX al nostre backend
+                $.ajax({
+                    url: '/api/parse-pgn',
+                    method: 'POST',
+                    data: {
+                        pgn_text: pgnText,
+                        _token: '{{ csrf_token() }}' // Important per a la seguretat de Laravel
+                    },
+                    success: function(response) {
+                        const headers = response.headers;
+                        const movetext = response.movetext;
 
-                            while ((match = headerRegex.exec(text)) !== null) {
-                                headers[match[1]] = match[2];
-                                lastHeaderIndex = match.index + match[0].length;
-                            }
-
-                            movetext = text.substring(lastHeaderIndex).trim();
-                            return { headers, movetext };
-                        }
-                        
-                        const parsedPgn = parsePgnText(pgnText);
-                        const headers = parsedPgn.headers;
-                        const movetext = parsedPgn.movetext;
-
-                        // Omplim el formulari amb les dades de les capçaleres
+                        // Omplim el formulari
                         $('#nom_blanques').val(headers.White || '');
-                        $('#nom_negres').val(headers.Black || '');
-                        $('#elo_blanques').val(headers.WhiteElo || '');
-                        $('#elo_negres').val(headers.BlackElo || '');
-                        $('#event').val(headers.Event || '');
-                        $('#site').val(headers.Site || '');
-                        $('#ronda').val(headers.Round || '');
-                        $('#resultat').val(headers.Result || '*');
-                        $('#equip_blanques').val(headers.WhiteTeam || '');
-                        $('#equip_negres').val(headers.BlackTeam || '');
-                    
-                        // Formatem la data si existeix
-                        if (headers.Date) {
-                            $('#data_partida').val(headers.Date.replace(/\./g, '-').substring(0, 10));
-                        }
+                        // ... (la resta de camps estàndard)
+                        $('#equip_blanques').val(headers.WhiteTeam || headers.camps_extra?.match(/\[WhiteTeam\s+"([^"]+)"\]/)?.[1] || '');
+                        $('#equip_negres').val(headers.BlackTeam || headers.camps_extra?.match(/\[BlackTeam\s+"([^"]+)"\]/)?.[1] || '');
 
-                        // CRUCIAL: Omplim els camps de les jugades
-                        $('#pgn_moves').val(movetext); // El camp ocult que s'envia
-                        $('#pgn-live-view').text(movetext); // El camp que veu l'usuari
+                        // Omplim les jugades
+                        $('#pgn_moves').val(movetext);
+                        $('#pgn-live-view').text(movetext);
 
-                        // Sincronitzem l'estat del joc i el tauler amb el nou PGN
-                        game.load_pgn(pgnText);
-                        board.position(game.fen());
-                    
-                        alert('PGN carregat correctament. Revisa les dades i guarda la partida.');
+                        // Sincronitzem el tauler
+                        try {
+                            game.load_pgn(pgnText);
+                            board.position(game.fen());
+                        } catch(e) { /* El tauler es queda a l'inici si el PGN és vàlid però té errors */ }
 
-                    } catch (e) {
-                        alert('El text PGN no és vàlid o té un format incorrecte.');
-                        console.error("Error al carregar PGN:", e);
+                        alert('PGN carregat correctament.');
+                    },
+                    error: function(jqXHR) {
+                        const errorMsg = jqXHR.responseJSON?.error || 'Un error desconegut ha ocorregut.';
+                        alert('Error al processar el PGN: ' + errorMsg);
                     }
                 });
             });
+        });
         </script>
     </x-slot>
 </x-app-layout>

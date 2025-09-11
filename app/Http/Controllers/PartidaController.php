@@ -8,10 +8,8 @@ use App\Models\Persona;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-
-// Importem les classes que necessitarem de la nova llibreria
-use PChess\Chess\Chess;
 use App\Services\PgnParserService;
+
 
 class PartidaController extends Controller
 {
@@ -114,6 +112,30 @@ class PartidaController extends Controller
         return view('partides.import');
     }
 
+
+    public function parsePgnFromText(Request $request)
+    {
+        $request->validate(['pgn_text' => 'required|string']);
+        $pgnText = $request->input('pgn_text');
+
+        try {
+            $parser = new PgnParserService($pgnText);
+            $headers = $parser->getHeaders();
+            $movetext = $parser->getMovetext();
+
+            if (empty($movetext) || empty($headers)) {
+                return response()->json(['error' => 'No s\'han pogut trobar dades de PGN vàlides.'], 400);
+            }
+
+            return response()->json([
+                'headers' => $headers,
+                'movetext' => $movetext,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error processant el PGN: ' . $e->getMessage()], 500);
+        }
+    }
+    
     /**
      * Handle the uploaded PGN file.
      */
