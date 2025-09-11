@@ -32,47 +32,60 @@ class PgnParserService
     private function parseSingleGame(string $pgn)
     {
         $lines = explode("\n", str_replace("\r", "", $pgn));
-        $state = 'reading_headers';
-        $unknownHeaders = [];
-        $rawMovetextLines = [];
+        $headerLines = [];
+        $moveLines = [];
+        $readingHeaders = true;
 
+        // Pas 1: Separem el bloc de capçaleres del de jugades
         foreach ($lines as $line) {
             $trimmedLine = trim($line);
 
-            // La teva regla: ignorem línies de "soroll"
-            if (empty($trimmedLine) || strpos($trimmedLine, '"""') === 0 || strpos($trimmedLine, '===') === 0) {
-                // Si trobem una línia en blanc DESPRÉS d'haver llegit capçaleres,
-                // és el separador definitiu cap a les jugades.
-                if (empty($trimmedLine) && $state === 'reading_headers' && !empty($this->headers)) {
-                    $state = 'reading_moves';
+            // Si la línia està buida, és el separador
+            if (empty($trimmedLine)) {
+                if ($readingHeaders && !empty($headerLines)) {
+                    $readingHeaders = false; // Deixem de llegir capçaleres
+                }
+                // Si ja estem llegint jugades, un salt de línia és part del PGN
+                if (!$readingHeaders) {
+                    $moveLines[] = $line;
                 }
                 continue;
             }
 
-            // Si encara estem a l'estat de capçaleres i la línia comença amb '['
-            if ($state === 'reading_headers' && strpos($trimmedLine, '[') === 0) {
-                if (preg_match('/\[([A-Za-z]+)\s+"([^"]*)"\]/', $trimmedLine, $matches)) {
-                    $tag = $matches[1];
-                    $value = $matches[2];
-                    if (in_array($tag, self::KNOWN_HEADERS)) {
-                        $this->headers[$tag] = $value;
-                    } else {
-                        $unknownHeaders[] = $trimmedLine;
-                    }
-                }
+            if ($readingHeaders && strpos($trimmedLine, '[') === 0) {
+                $headerLines[] = $trimmedLine;
             } else {
-                // Si la línia no és una capçalera, canviem d'estat (si no ho hem fet ja)
-                // i la considerem part de les jugades.
-                $state = 'reading_moves';
-                $rawMovetextLines[] = $trimmedLine;
+                // Hem trobat la primera línia que no és capçalera
+                $readingHeaders = false;
+                $moveLines[] = $line;
             }
         }
+        
+        
+        // Processem les capçaleres que hem trobat
+        $this->parseHeaders($headerLines);
 
+        // Unim les línies de jugades, preservant el format original
+        $this->movetext = trim(implode("\n", $moveLines));
+    }
+
+    private function parseHeaders(array $headerLines)
+    {
+        $unknownHeaders = [];
+        foreach ($headerLines as $line) {
+            if (preg_match('/\[([A-Za-z]+)\s+"([^"]*)"\]/', $line, $matches)) {
+                $tag = $matches[1];
+                $value = $matches[2];
+                if (in_array($tag, self::KNOWN_HEADERS)) {
+                    $this->headers[$tag] = $value;
+                } else {
+                    $unknownHeaders[] = $line;
+                }
+            }
+        }
         if (!empty($unknownHeaders)) {
             $this->headers['camps_extra'] = implode("\n", $unknownHeaders);
         }
-        
-        // Unim totes les línies de jugades en un sol text, preservant el format
-        $this->movetext = implode(" ", $rawMovetextLines);
     }
 }
+    
