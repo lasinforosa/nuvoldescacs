@@ -122,9 +122,6 @@ class PartidaController extends Controller
         $request->validate(['pgn_file' => 'required|file|mimes:pgn,txt']);
         $contingutPgn = file_get_contents($request->file('pgn_file')->getRealPath());
 
-        // Separem les partides, assegurant-nos que cada tros comença amb [Event
-        $partidesText = preg_split('/(?=\[Event)/', $contingutPgn, -1, \PREG_SPLIT_NO_EMPTY);
-
         // Pas 1: El Controlador fa la feina de separar el fitxer en partides individuals.
         // Aquesta expressió regular és la clau: busca el text que comença amb "[Event"
         $partidesText = preg_split('/(?=\[Event)/', $contingutPgn, -1, \PREG_SPLIT_NO_EMPTY);
@@ -134,7 +131,7 @@ class PartidaController extends Controller
         }
         
         // DEBUG
-        // dd($partidesText);
+        dd($partidesText);
 
         $partidesImportades = 0;
         $errors = [];
