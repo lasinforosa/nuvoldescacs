@@ -44,7 +44,18 @@
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 bg-white border-b border-gray-200">
 
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- === ESTRUCTURA PRINCIPAL AMB BARRA DE VALORACIÓ === -->
+                    <div class="flex flex-col md:flex-row gap-4">
+
+                    <!-- Columna 1: Barra de Valoració -->
+                        <div class="order-2 md:order-1 w-full md:w-4">
+                            <div id="eval-bar-container" class="h-6 md:h-full bg-gray-300 rounded-full flex md:flex-col overflow-hidden">
+                                <div id="eval-bar-white" class="bg-white transition-all duration-300" style="height: 50%; width: 50%;"></div>
+                                <div id="eval-bar-black" class="bg-gray-800 transition-all duration-300" style="height: 50%; width: 50%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         
                         <!-- Columna 1: Tauler i Controls -->
                         <div class="md:col-span-1">
@@ -57,6 +68,7 @@
                                 <button id="nextBtn" class="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-800">></button>
                                 <button id="endBtn" class="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-800">>|</button>                        
                                 <button id="flipBtn" class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-800">Girar</button>
+                                <button id="analyzeBtn" class="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-800">Analitzar</button>
                             </div>
 
                             <div class="mt-4 border-t pt-4">
@@ -114,6 +126,12 @@
                                     {{-- El PGN es carregarà aquí amb JavaScript --}}
                                 </div>
                             </div>
+                            <div id="analysis-container" class="mb-4 p-3 bg-gray-800 text-white rounded-lg font-mono text-sm hidden">
+                                <div id="analysis-evaluation">Valoració: --</div>
+                                <div id="analysis-best-line" class="mt-1">Millor línia: --</div>
+                            </div>
+
+
                         </div> <!-- FI CORRECTE DE LA COLUMNA 2 -->
 
                     </div> <!-- FI DE L'ESTRUCTURA DE GRAELLA -->
@@ -135,6 +153,10 @@
                 let history = [];
                 let currentMoveIndex = 0;
 
+                // --- VARIABLES I FUNCIONS DE STOCKFISH ---
+                let stockfish = null;
+                let isAnalyzing = false;
+
                 let boardConfig = {
                     draggable: false,
                     position: 'start',
@@ -146,6 +168,66 @@
                     green: { light: '#e8e8e8', dark: '#7c986d' },
                     blue:  { light: '#dee3e6', dark: '#8ca2ad' }
                 };
+
+                function updateEvalBar(evaluation) { 
+                    let score = 0;
+                    if (evaluation.startsWith('M')) {
+                        score = evaluation.includes('-') ? -1000 : 1000;
+                    } else {
+                        score = parseInt(evaluation);
+                    }
+                    const cappedScore = Math.max(-800, Math.min(800, score));
+                    const whiteHeight = 50 + (cappedScore / 800) * 50;
+                    $('#eval-bar-white').css({ 'height': `${whiteHeight}%`, 'width': '100%' });
+                    $('#eval-bar-black').css({ 'height': `${100 - whiteHeight}%`, 'width': '100%' });
+                }
+
+                function startAnalysis() {
+                    if (!stockfish) {
+                        // La inicialització correcta per a la versió WASM
+                        stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
+                    
+                        stockfish.onmessage = function(event) {
+                            const message = event.data;
+                            if (message.startsWith('info depth') && message.includes('score cp')) {
+                                const scoreMatch = message.match(/score cp (-?\d+)/);
+                                const pvMatch = message.match(/pv (.+)/);
+                                if (scoreMatch && pvMatch) {
+                                    $('#analysis-evaluation').text(`Valoració: ${ (scoreMatch[1] / 100).toFixed(2) }`);
+                                    $('#analysis-best-line').text(`Millor línia: ${pvMatch[1]}`);
+                                    updateEvalBar(scoreMatch[1]);
+                                }
+                            } else if (message.startsWith('info depth') && message.includes('score mate')) {
+                                const scoreMatch = message.match(/score mate (-?\d+)/);
+                                const pvMatch = message.match(/pv (.+)/);
+                                if (scoreMatch && pvMatch) {
+                                    $('#analysis-evaluation').text(`Valoració: Mat en ${scoreMatch[1]}`);
+                                    $('#analysis-best-line').text(`Millor línia: ${pvMatch[1]}`);
+                                    updateEvalBar('M' + scoreMatch[1]);
+                                    }
+                                }
+                            };
+                        stockfish.postMessage('uci');
+                    }
+                    isAnalyzing = true;
+                    $('#analysis-container').removeClass('hidden');
+                    $('#analyzeBtn').text('Aturar Anàlisi').removeClass('bg-purple-600').addClass('bg-red-600');
+                    
+                    setTimeout(() => {
+                        stockfish.postMessage('position fen ' + game.fen());
+                        stockfish.postMessage('go depth 18');
+                    }, 200);
+                }
+
+                function stopAnalysis() {
+                    if (stockfish) {
+                        stockfish.postMessage('stop');
+                    }
+                    isAnalyzing = false;
+                    $('#analysis-container').addClass('hidden');
+                    $('#analyzeBtn').text('Analitzar').removeClass('bg-red-600').addClass('bg-purple-600');
+                }
+
 
                 function loadGameFromPgn() {
                     try {
@@ -174,7 +256,16 @@
                         if (history[i].color === 'b') { moveNumber++; }
                     }
                     $('#pgn-display').html(pgnHtml);
+
+                    if (isAnalyzing && stockfish) {
+                        stockfish.postMessage('stop');
+                        setTimeout(() => {
+                            stockfish.postMessage('position fen ' + game.fen());
+                            stockfish.postMessage('go depth 18');
+                        }, 50);
+                    }
                 }
+                
 
                 function redrawBoard() {
                     if (board) board.destroy();
@@ -196,10 +287,20 @@
                     });
                 }
 
+
+
                 loadGameFromPgn();
                 board = Chessboard('board', boardConfig);
                 updateView();
                 setBoardTheme('brown');
+
+                $('#analyzeBtn').on('click', function() {
+                    if (isAnalyzing) {
+                        stopAnalysis();
+                    } else {
+                        startAnalysis();
+                    }
+                });
 
                 $('#startBtn').on('click', function() { loadGameFromPgn(); redrawBoard(); });
                 $('#prevBtn').on('click', function() { if (currentMoveIndex > 0) { currentMoveIndex--; game.undo(); updateView(); } });
