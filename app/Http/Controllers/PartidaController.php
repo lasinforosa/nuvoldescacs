@@ -59,15 +59,28 @@ class PartidaController extends Controller
             // Colors específics: busquem W vs B
             $query->whereHas('blanques', fn($p) => $p->where('nom', 'like', "%{$whitePlayer}%"))
                   ->whereHas('negres', fn($p) => $p->where('nom', 'like', "%{$blackPlayer}%"));
-        }
+            }
         } elseif ($whitePlayer) {
-            // Cas 2: Només busquem un jugador de blanques
-            $query->whereHas('blanques', fn($p) => $p->where('nom', 'like', "%{$whitePlayer}%"));
+            if ($ignoreColors) {
+            $query->where(function ($q) use ($whitePlayer) {
+                $q->whereHas('blanques', fn($p) => $p->where('nom', 'like', "%{$whitePlayer}%"))
+                  ->orWhereHas('negres', fn($p) => $p->where('nom', 'like', "%{$whitePlayer}%"));
+            });
+            } else {
+                $query->whereHas('blanques', fn($p) => $p->where('nom', 'like', "%{$whitePlayer}%"));
+            }
         } elseif ($blackPlayer) {
-            // Cas 3: Només busquem un jugador de negres
-            $query->whereHas('negres', fn($p) => $p->where('nom', 'like', "%{$blackPlayer}%"));
+            /// Cas 3: Només jugador de negres. El checkbox decideix.
+            if ($ignoreColors) {
+                $query->where(function ($q) use ($blackPlayer) {
+                    $q->whereHas('blanques', fn($p) => $p->where('nom', 'like', "%{$blackPlayer}%"))
+                    ->orWhereHas('negres', fn($p) => $p->where('nom', 'like', "%{$blackPlayer}%"));
+                });
+            } else {
+                $query->whereHas('negres', fn($p) => $p->where('nom', 'like', "%{$blackPlayer}%"));
+            }
         }
-        
+
         if ($request->filled('search_event')) {
             $query->where('event', 'like', '%' . $request->input('search_event') . '%');
         }
@@ -126,6 +139,9 @@ class PartidaController extends Controller
             if (empty($movetext) || empty($headers)) {
                 return response()->json(['error' => 'No s\'han pogut trobar dades de PGN vàlides.'], 400);
             }
+
+            // DEBUG
+            dd($headers, $movetext);
 
             return response()->json([
                 'headers' => $headers,
@@ -429,9 +445,12 @@ class PartidaController extends Controller
         // Intentem separar per si s'han enganxat múltiples partides, però només agafem la primera
         $partidesText = preg_split('/(?=\[Event(\s+|"))/', $pgnText, -1, \PREG_SPLIT_NO_EMPTY);
         if (empty($partidesText)) {
-            return back()->withErrors('El text PGN no conté cap partida reconeixible.');
+            return back()->withInput()->withErrors('El text PGN no conté cap partida reconeixible.');
         }
         $pgnIndividual = $partidesText[0];
+        
+        // DEBUG
+        // dd($pgnIndividual);
 
         try {
             // Cridem a la nostra funció privada centralitzada
@@ -439,8 +458,9 @@ class PartidaController extends Controller
             $this->processAndSavePgn($pgnIndividual, $cache);
         } catch (\Exception $e) {
             // Si falla, tornem al formulari de creació amb l'error
+            // AQUESTA ÉS LA PART CLAU: Redirigim SEMPRE amb un error clar.
             return redirect()->route('partides.create')
-                             ->withInput() // Manté el text que l'usuari havia enganxat
+                             ->withInput()
                              ->withErrors('Error al processar el PGN: ' . $e->getMessage());
         }
 
@@ -478,12 +498,18 @@ class PartidaController extends Controller
             $headers = $parser->getHeaders();
             $movetext = $parser->getMovetext(); 
 
+            // DEBUG
+            // dd($headers, $movetext);
+
             if (empty($movetext) || !isset($headers['White']) || !isset($headers['Black'])) {
                 throw new \Exception("Dades essencials (jugadors o jugades) no trobades.");
             }
 
             $idBlanques = $this->findOrCreateIdentity($headers['White'], $identitatsCache);
             $idNegres = $this->findOrCreateIdentity($headers['Black'], $identitatsCache);
+
+            // DEBUG
+            // dd(isset($headers['Date']) ? preg_replace('/[^0-9-]/', '', str_replace('.', '-', $headers['Date'])) : null);
 
             Partida::create([
                 'event' => $headers['Event'] ?? null,
