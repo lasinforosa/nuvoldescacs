@@ -186,9 +186,7 @@
                 function updateView() {
                     if (board) board.position(game.fen());
                     updatePgnTextView();
-                    if (isAnalyzing) {
-                        analyzePosition();
-                    }
+                    analyzePosition(); // La crida es manté aquí per a la navegació
                 }
 
                 function redrawBoard() {
@@ -216,79 +214,41 @@
                     $('#eval-bar-black').css({ 'height': `${100 - whiteHeight}%`, 'width': '100%' });
                 }
                 
+
+                // --- 3. FUNCIONS DE STOCKFISH (LA PART CLAU) 
                 function analyzePosition() {
-                    if (!isAnalyzing || !isStockfishReady) return;
-                    const fen = game.fen();
-                    $('#stockfish-monitor').append(`<p class="text-yellow-400">> position fen ${fen}</p>`);
-                    stockfish.postMessage('position fen ' + fen);
-                    $('#stockfish-monitor').append(`<p class="text-yellow-400">> go depth 18</p>`);
-                    stockfish.postMessage('go depth 18');
+                    if (isAnalyzing && isStockfishReady) {
+                        stockfish.postMessage('stop');
+                        stockfish.postMessage('position fen ' + game.fen());
+                        stockfish.postMessage('go depth 18'); 
+                    }
                 }
+                    
 
                 function initializeStockfish() {
                     if (stockfish) {
-                        // analyzePosition(); 
-                        // // Si ja existeix, simplement analitzem
+                        analyzePosition(); 
                         return;
                     }
 
-                    $('#analysis-container').removeClass('hidden');
-                    $('#stockfish-monitor').removeClass('hidden').html('<p><strong>Monitor de Stockfish:</strong></p>');
-
                     $('#analysis-evaluation').text(`Carregant motor...`);
+                    $('#stockfish-monitor').removeClass('hidden').html('<p><strong>Monitor de Stockfish:</strong></p>');
+                
+                    stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
                     
-                    const stockfishJsPath = "{{ asset('vendor/stockfish/stockfish.js') }}";
-                    // stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
-                    
-                    $('#stockfish-monitor').append(`<p>Verificant ruta: ${stockfishJsPath}</p>`);
-
-                    // Test d'existència amb jQuery.ajax
-                    $.ajax({
-                        url: stockfishJsPath,
-                        dataType: "script"
-                    }).done(function() {
-                        $('#stockfish-monitor').append('<p class="text-green-400">TEST D\'EXISTÈNCIA: Fitxer stockfish.js carregat correctament!</p>');
-
-                    // Si el fitxer existeix, ARA intentem crear el Worker
-                    try {
-                        stockfish = new Worker(stockfishJsPath + "#stockfish.wasm");
-                        
-                        stockfish.onmessage = function(event) {
-                            const message = event.data;
-                            $('#stockfish-monitor').append(`<p>< ${message}</p>`);
-                            // ... (la resta de la lògica onmessage no canvia)
-                        };
-
-                        stockfish.onerror = function(e) {
-                            $('#stockfish-monitor').append(`<p class="text-red-500">ERROR DEL WORKER: ${e.message}</p>`);
-                        };
-                        
-                        stockfish.postMessage('uci');
-
-                    } catch(e) {
-                        $('#stockfish-monitor').append(`<p class="text-red-500">EXCEPCIÓ AL CREAR WORKER: ${e.message}</p>`);
-                    }
-
-                }).fail(function() {
-                    $('#stockfish-monitor').append('<p class="text-red-500">TEST D\'EXISTÈNCIA: ERROR 404! No s\'ha pogut trobar el fitxer a la ruta especificada.</p>');
-                });
-            }
-                    
-                        /*
-                    // Aquesta és la part que estava trencada
                     stockfish.onmessage = function(event) {
                         const message = event.data;
-                        
-                        // Mostrem SEMPRE el que rebem per depurar
-                        $('#stockfish-monitor').append(`<p>< ${message}</p>`);
+                        $('#stockfish-monitor').append(`<p class="text-xs">< ${message}</p>`);
                         $('#stockfish-monitor').scrollTop($('#stockfish-monitor')[0].scrollHeight);
-
+                        
                         if (message === 'uciok') {
                             isStockfishReady = true;
+                            $('#stockfish-monitor').append('<p class="text-yellow-400">> ucinewgame</p>');
                             stockfish.postMessage('ucinewgame');
+                            // Un cop el motor està a punt, analitzem la posició inicial
                             analyzePosition();
-                        } else if (message.startsWith('info depth')) {
-                            if (message.includes('score cp')) {
+                            } else if (message.startsWith('info depth')) {
+                                if (message.includes('score cp')) {
                                 const scoreMatch = message.match(/score cp (-?\d+)/);
                                 const pvMatch = message.match(/pv (.+)/);
                                 if (scoreMatch && pvMatch) {
@@ -311,18 +271,18 @@
                         }
                     };
 
-                    stockfish.onerror = function(e) {
-                        $('#stockfish-monitor').append(`<p class="text-red-500">ERROR DEL WORKER: ${e.message}</p>`);
-                    };
-                    
-                    stockfish.postMessage('uci');
+                    stockfish.onerror = (e) => $('#stockfish-monitor').append(`<p class="text-red-500">ERROR: ${e.message}</p>`);
+                
+                    // Iniciem la conversa
+                    $('#stockfish-monitor').append('<p class="text-yellow-400">> uci</p>');
+                        stockfish.postMessage('uci');
                 }
-                */   
-                    
+                   
+                        
                 function startAnalysis() {
                     isAnalyzing = true;
                     $('#analysis-container').removeClass('hidden');
-                    $('#stockfish-monitor').removeClass('hidden');
+                    // $('#stockfish-monitor').removeClass('hidden');
                     $('#analyzeBtn').text('Aturar Anàlisi').removeClass('bg-purple-600').addClass('bg-red-600');
                     initializeStockfish();
                 }
