@@ -227,15 +227,54 @@
 
                 function initializeStockfish() {
                     if (stockfish) {
-                        analyzePosition(); // Si ja existeix, simplement analitzem
+                        // analyzePosition(); 
+                        // // Si ja existeix, simplement analitzem
                         return;
                     }
 
+                    $('#analysis-container').removeClass('hidden');
+                    $('#stockfish-monitor').removeClass('hidden').html('<p><strong>Monitor de Stockfish:</strong></p>');
+
                     $('#analysis-evaluation').text(`Carregant motor...`);
                     
-                    stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
+                    const stockfishJsPath = "{{ asset('vendor/stockfish/stockfish.js') }}";
+                    // stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
                     
+                    $('#stockfish-monitor').append(`<p>Verificant ruta: ${stockfishJsPath}</p>`);
+
+                    // Test d'existència amb jQuery.ajax
+                    $.ajax({
+                        url: stockfishJsPath,
+                        dataType: "script"
+                    }).done(function() {
+                        $('#stockfish-monitor').append('<p class="text-green-400">TEST D\'EXISTÈNCIA: Fitxer stockfish.js carregat correctament!</p>');
+
+                    // Si el fitxer existeix, ARA intentem crear el Worker
+                    try {
+                        stockfish = new Worker(stockfishJsPath + "#stockfish.wasm");
+                        
+                        stockfish.onmessage = function(event) {
+                            const message = event.data;
+                            $('#stockfish-monitor').append(`<p>< ${message}</p>`);
+                            // ... (la resta de la lògica onmessage no canvia)
+                        };
+
+                        stockfish.onerror = function(e) {
+                            $('#stockfish-monitor').append(`<p class="text-red-500">ERROR DEL WORKER: ${e.message}</p>`);
+                        };
+                        
+                        stockfish.postMessage('uci');
+
+                    } catch(e) {
+                        $('#stockfish-monitor').append(`<p class="text-red-500">EXCEPCIÓ AL CREAR WORKER: ${e.message}</p>`);
+                    }
+
+                }).fail(function() {
+                    $('#stockfish-monitor').append('<p class="text-red-500">TEST D\'EXISTÈNCIA: ERROR 404! No s\'ha pogut trobar el fitxer a la ruta especificada.</p>');
+                });
+            }
                     
+                        /*
                     // Aquesta és la part que estava trencada
                     stockfish.onmessage = function(event) {
                         const message = event.data;
@@ -278,7 +317,7 @@
                     
                     stockfish.postMessage('uci');
                 }
-                   
+                */   
                     
                 function startAnalysis() {
                     isAnalyzing = true;
