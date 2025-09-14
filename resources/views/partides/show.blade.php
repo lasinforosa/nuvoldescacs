@@ -159,7 +159,7 @@
                 let stockfish = null;
                 let isAnalyzing = false;
                 let isStockfishReady = false;
-
+                
                 // --- 2. FUNCIONS D'AJUDA ---
                 function loadGameFromPgn() {
                     try {
@@ -217,19 +217,33 @@
                 }
                 
                 function analyzePosition() {
-                    if (isAnalyzing && isStockfishReady) {
-                        stockfish.postMessage('stop');
-                        stockfish.postMessage('position fen ' + game.fen());
-                        stockfish.postMessage('go depth 18');
-                    }
+                    if (!isAnalyzing || !isStockfishReady) return;
+                    const fen = game.fen();
+                    $('#stockfish-monitor').append(`<p class="text-yellow-400">> position fen ${fen}</p>`);
+                    stockfish.postMessage('position fen ' + fen);
+                    $('#stockfish-monitor').append(`<p class="text-yellow-400">> go depth 18</p>`);
+                    stockfish.postMessage('go depth 18');
                 }
 
                 function initializeStockfish() {
-                    if (stockfish) { analyzePosition(); return; }
+                    if (stockfish) {
+                        analyzePosition(); // Si ja existeix, simplement analitzem
+                        return;
+                    }
+
                     $('#analysis-evaluation').text(`Carregant motor...`);
+                    
                     stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
+                    
+                    
+                    // Aquesta és la part que estava trencada
                     stockfish.onmessage = function(event) {
                         const message = event.data;
+                        
+                        // Mostrem SEMPRE el que rebem per depurar
+                        $('#stockfish-monitor').append(`<p>< ${message}</p>`);
+                        $('#stockfish-monitor').scrollTop($('#stockfish-monitor')[0].scrollHeight);
+
                         if (message === 'uciok') {
                             isStockfishReady = true;
                             stockfish.postMessage('ucinewgame');
@@ -253,13 +267,23 @@
                                 }
                             }
                         }
+                        else if (message.startsWith('bestmove')) {
+                        // Quan acaba el càlcul, podem fer alguna cosa si volem
+                        }
                     };
+
+                    stockfish.onerror = function(e) {
+                        $('#stockfish-monitor').append(`<p class="text-red-500">ERROR DEL WORKER: ${e.message}</p>`);
+                    };
+                    
                     stockfish.postMessage('uci');
                 }
-
+                   
+                    
                 function startAnalysis() {
                     isAnalyzing = true;
                     $('#analysis-container').removeClass('hidden');
+                    $('#stockfish-monitor').removeClass('hidden');
                     $('#analyzeBtn').text('Aturar Anàlisi').removeClass('bg-purple-600').addClass('bg-red-600');
                     initializeStockfish();
                 }
@@ -268,6 +292,7 @@
                     if (stockfish) { stockfish.postMessage('stop'); }
                     isAnalyzing = false;
                     $('#analysis-container').addClass('hidden');
+                    $('#stockfish-monitor').addClass('hidden');
                     $('#analyzeBtn').text('Analitzar').removeClass('bg-red-600').addClass('bg-purple-600');
                 }
 
