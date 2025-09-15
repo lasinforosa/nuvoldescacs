@@ -159,6 +159,8 @@
                 let stockfish = null;
                 let isAnalyzing = false;
                 let isStockfishReady = false;
+                let analysisDebounceTimeout = null; // NOU: Per al "debouncing"
+
                 
                 // --- 2. FUNCIONS D'AJUDA ---
                 function loadGameFromPgn() {
@@ -204,10 +206,38 @@
                     });
                 }
 
+                // --- 3. FUNCIONS DE STOCKFISH (LA PART CLAU) 
+                // NOU: Funció per traduir de LAN a SAN
+                function translateLanToSan(lanMoves) {
+                    const tempGame = new Chess(game.fen()); // Creem un clon de la posició actual
+                    let sanLine = '';
+                    const moves = lanMoves.split(' ');
+                    for (const lan of moves) {
+                        const from = lan.substring(0, 2);
+                        const to = lan.substring(2, 4);
+                        const promotion = lan.length > 4 ? lan.substring(4) : undefined;
+                        
+                        const moveResult = tempGame.move({ from, to, promotion });
+                        if (moveResult) {
+                            sanLine += moveResult.san + ' ';
+                        }
+                    }
+                    return sanLine.trim();
+                }
+
                 function updateEvalBar(evaluation) {
                     let score = 0;
-                    if (evaluation.startsWith('M')) { score = evaluation.includes('-') ? -1000 : 1000; } 
-                    else { score = parseInt(evaluation); }
+                    if (evaluation.startsWith('M')) {
+                        score = evaluation.includes('-') ? -1000 : 1000;
+                    } else {
+                        score = parseInt(evaluation);
+                    }
+                    
+                    // NOU: Lògica per mantenir la perspectiva de les blanques
+                    if (turn === 'b') {
+                        score = -score;
+                    }
+                    
                     const cappedScore = Math.max(-800, Math.min(800, score));
                     const whiteHeight = 50 + (cappedScore / 800) * 50;
                     $('#eval-bar-white').css({ 'height': `${whiteHeight}%`, 'width': '100%' });
@@ -215,15 +245,18 @@
                 }
                 
 
-                // --- 3. FUNCIONS DE STOCKFISH (LA PART CLAU) 
                 function analyzePosition() {
-                    if (isAnalyzing && isStockfishReady) {
+                    if (!isAnalyzing || !isStockfishReady) return;
+                
+                    // NOU: Lògica de "debouncing"
+                    clearTimeout(analysisDebounceTimeout); // Cancel·lem l'anàlisi anterior si n'hi ha
+                    analysisDebounceTimeout = setTimeout(() => {
                         stockfish.postMessage('stop');
                         stockfish.postMessage('position fen ' + game.fen());
-                        stockfish.postMessage('go depth 18'); 
-                    }
+                        stockfish.postMessage('go depth 18');
+                    }, 250); // Esperem 250ms abans d'enviar la comanda
                 }
-                    
+                   
 
                 function initializeStockfish() {
                     if (stockfish) {
@@ -232,53 +265,62 @@
                     }
 
                     $('#analysis-evaluation').text(`Carregant motor...`);
-                    $('#stockfish-monitor').removeClass('hidden').html('<p><strong>Monitor de Stockfish:</strong></p>');
-                
                     stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
                     
                     stockfish.onmessage = function(event) {
                         const message = event.data;
-                        $('#stockfish-monitor').append(`<p class="text-xs">< ${message}</p>`);
-                        $('#stockfish-monitor').scrollTop($('#stockfish-monitor')[0].scrollHeight);
-                        
+                    
                         if (message === 'uciok') {
                             isStockfishReady = true;
-                            $('#stockfish-monitor').append('<p class="text-yellow-400">> ucinewgame</p>');
                             stockfish.postMessage('ucinewgame');
-                            // Un cop el motor està a punt, analitzem la posició inicial
                             analyzePosition();
-                            } else if (message.startsWith('info depth')) {
-                                if (message.includes('score cp')) {
+                        } else if (message.startsWith('info depth')) {
+                            if (message.includes('score cp')) {
                                 const scoreMatch = message.match(/score cp (-?\d+)/);
                                 const pvMatch = message.match(/pv (.+)/);
                                 if (scoreMatch && pvMatch) {
-                                    $('#analysis-evaluation').text(`Valoració: ${ (scoreMatch[1] / 100).toFixed(2) }`);
-                                    $('#analysis-best-line').text(`Millor línia: ${pvMatch[1]}`);
-                                    updateEvalBar(scoreMatch[1]);
+                                    const bestLineSan = translateLanToSan(pvMatch[1]);
+                                    const evaluation = scoreMatch[1];
+                                    const turn = game.turn();
+                                
+                                    // NOU: Passem el torn a les funcions d'actualització
+                                    let displayScore = (evaluation / 100).toFixed(2);
+                                    if (turn === 'b') displayScore = (-displayScore).toFixed(2);
+                                    
+                                    $('#analysis-evaluation').text(`Valoració: ${displayScore}`);
+                                    $('#analysis-best-line').text(`Millor línia: ${bestLineSan}`);
+                                    updateEvalBar(evaluation, turn);
                                 }
                             } else if (message.includes('score mate')) {
                                 const scoreMatch = message.match(/score mate (-?\d+)/);
                                 const pvMatch = message.match(/pv (.+)/);
                                 if (scoreMatch && pvMatch) {
+                                    // UTILITZEM EL TRADUCTOR
+                                    const bestLineSan = translateLanToSan(pvMatch[1]);
                                     $('#analysis-evaluation').text(`Valoració: Mat en ${scoreMatch[1]}`);
-                                    $('#analysis-best-line').text(`Millor línia: ${pvMatch[1]}`);
+                                    $('#analysis-best-line').text(`Millor línia: ${bestLineSan}`);
                                     updateEvalBar('M' + scoreMatch[1]);
                                 }
                             }
                         }
-                        else if (message.startsWith('bestmove')) {
-                        // Quan acaba el càlcul, podem fer alguna cosa si volem
-                        }
                     };
-
-                    stockfish.onerror = (e) => $('#stockfish-monitor').append(`<p class="text-red-500">ERROR: ${e.message}</p>`);
-                
-                    // Iniciem la conversa
-                    $('#stockfish-monitor').append('<p class="text-yellow-400">> uci</p>');
-                        stockfish.postMessage('uci');
+                    stockfish.postMessage('uci');
                 }
-                   
-                        
+                
+                // NOU: Funció centralitzada per gestionar l'estat visual de l'anàlisi
+                function setAnalysisState(active) {
+                    isAnalyzing = active;
+                    if (active) {
+                        $('#analysis-container').removeClass('hidden');
+                        $('#analyzeBtn').text('Aturar Anàlisi').removeClass('bg-purple-600').addClass('bg-red-600');
+                        initializeStockfish();
+                    } else {
+                        if (stockfish) stockfish.postMessage('stop');
+                        $('#analysis-container').addClass('hidden');
+                        $('#analyzeBtn').text('Analitzar').removeClass('bg-red-600').addClass('bg-purple-600');
+                    }
+                }    
+
                 function startAnalysis() {
                     isAnalyzing = true;
                     $('#analysis-container').removeClass('hidden');
@@ -307,10 +349,12 @@
                 $('#prevBtn').on('click', function() { if (currentMoveIndex > 0) { currentMoveIndex--; game.undo(); updateView(); } });
                 $('#nextBtn').on('click', function() { if (currentMoveIndex < history.length) { game.move(history[currentMoveIndex]); currentMoveIndex++; updateView(); } });
                 $('#endBtn').on('click', function() { game.load_pgn(pgnData || ''); currentMoveIndex = history.length; updateView(); });
-                
-                // Controls del tauler
                 $('#flipBtn').on('click', function() { board.flip(); });
-                $('#analyzeBtn').on('click', function() { if (isAnalyzing) { stopAnalysis(); } else { startAnalysis(); } });
+                
+                $('#analyzeBtn').on('click', function() {
+                    setAnalysisState(!isAnalyzing);
+                });
+                
                 $('#piece-theme').on('change', function() {
                     const selected = $(this).find('option:selected');
                     boardConfig.pieceTheme = `/img/chesspieces/${selected.val()}/{piece}.${selected.data('format')}`;
