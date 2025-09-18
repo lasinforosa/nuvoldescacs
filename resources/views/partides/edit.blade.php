@@ -21,7 +21,7 @@
                         </div>
                     @endif
 
-                    <form method="POST" action="{{ route('partides.update', ['partida' => $partida->id_partida]) }}">
+                    <form method="POST" action="{{ route('partides.update', ['partida' => $partida] + $query_params) }}">
                         @csrf
                         @method('PUT')
 
@@ -122,7 +122,7 @@
                         </div>
 
                         <div class="flex items-center justify-end mt-6">
-                            <a href="{{ route('partides.index') }}" class="text-sm text-gray-600 hover:text-gray-900 mr-4">Cancel·lar</a>
+                            <a href="{{ route('partides.index', $query_params) }}" class="text-sm text-gray-600 hover:text-gray-900 mr-4">Cancel·lar</a>
                             <button type="submit" class="inline-flex items-center px-4 py-2 bg-gray-800 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-700">Actualitzar Partida</button>
                         </div>
                     </form>

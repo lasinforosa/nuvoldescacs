@@ -9,3 +9,29 @@
 /* Quan es ressalta una casella */
 .highlight-white { box-shadow: inset 0 0 3px 3px yellow; }
 .highlight-black { box-shadow: inset 0 0 3px 3px yellow; }
+
+/* === NOUS ESTILS "BOMBA ATÒMICA" PER A LA PAGINACIÓ === */
+
+/* Trobem el contenidor de la paginació i li diem que els seus fills directes són els botons */
+nav[role="navigation"] > div > div:last-child > span > span,
+nav[role="navigation"] > div > div:last-child > a {
+    transition: background-color 0.2s ease-in-out;
+}
+
+/* Enllaços normals (hover) */
+nav[role="navigation"] > div > div:last-child > a:hover {
+    background-color: #e0e7ff !important;
+}
+
+/* Pàgina activa (el botó fosc) */
+/* Aquesta és la clau: busquem l'element 'span' que NO és un enllaç */
+nav[role="navigation"] > div > div:last-child > span > span[aria-current="page"] span {
+    background-color: #4338ca !important;
+    color: white !important;
+    border-color: #4338ca !important;
+}
+
+/* Botons "Anterior" i "Següent" desactivats */
+nav[role="navigation"] > div > div:last-child > span > span[aria-disabled="true"] {
+    background-color: #f3f4f6 !important;
+}

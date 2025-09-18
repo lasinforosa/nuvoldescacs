@@ -17,7 +17,7 @@ class PartidaController extends Controller
     {
         // Validem que el paràmetre 'perPage' sigui un número permès
         $request->validate([
-            'perPage' => 'sometimes|in:10,25,50,100',
+            'perPage' => 'sometimes|in:25,50,100,250,500',
             'search_player1' => 'nullable|string|max:80',
             'search_player2' => 'nullable|string|max:80',
             'search_event' => 'nullable|string|max:80',
@@ -31,7 +31,7 @@ class PartidaController extends Controller
 
 
         // Agafem el valor de la URL, o posem 25 per defecte
-        $perPage = $request->input('perPage', 25);
+        $perPage = $request->input('perPage', 50);
 
         // Comencem a construir la consulta a la base de dades pas a pas
         $query = Partida::query()->with(['blanques', 'negres']);
@@ -344,11 +344,14 @@ class PartidaController extends Controller
         ]);
     }
 
-    public function edit(Partida $partida)
+    public function edit(Request $request, Partida $partida)
     {
         $partida->load(['blanques', 'negres']);
         // Passem la variable a la vista amb el nom 'partida' per no haver de canviar la vista
-        return view('partides.edit', ['partida' => $partida]);
+        return view('partides.edit', [
+        'partida' => $partida,
+        'query_params' => $request->query() // Passem tots els paràmetres (page, perPage, filtres)
+    ]);
     }
 
     public function update(Request $request, Partida $partida)
@@ -427,14 +430,17 @@ class PartidaController extends Controller
         Partida::whereIn('id_partida', $idsToDelete)->delete();
 
         // 3. Redirigim amb un missatge d'èxit
-        return redirect()->route('partides.index')
-                        ->with('success', count($idsToDelete) . ' partides han estat esborrades correctament.');
+        // NOU: Redirigim a la ruta 'partides.index' amb tots els paràmetres de la URL anterior
+        return redirect()->route('partides.index', $request->except(['_token', '_method', 'partida_ids']))
+                     ->with('success', count($idsToDelete) . ' partides han estat esborrades correctament.');
     }
 
     public function destroy(Partida $partida)
     {
         $partida->delete();
-        return redirect()->route('partides.index')->with('success', 'Partida esborrada correctament.');
+        // NOU: Redirigim a la ruta 'partides.index' amb tots els paràmetres de la URL anterior
+        return redirect()->route('partides.index', request()->query())
+                     ->with('success', 'Partida esborrada correctament.');
     }
 
     public function handlePaste(Request $request)

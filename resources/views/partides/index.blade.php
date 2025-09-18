@@ -88,12 +88,13 @@
                             <form action="{{ route('partides.index', request()->except('perPage')) }}" method="GET">
                                 <label for="perPage">Files:</label>
                                 <select name="perPage" id="perPage" onchange="this.form.submit()" class="rounded-md shadow-sm border-gray-300 text-sm">
-                                    <option value="10" @selected(request('perPage', 25) == 10)>10</option>
-                                    <option value="25" @selected(request('perPage', 25) == 25)>25</option>
-                                    <option value="50" @selected(request('perPage', 25) == 50)>50</option>
-                                    <option value="100" @selected(request('perPage', 25) == 100)>100</option>
+                                    <option value="25" @selected(request('perPage', 50) == 25)>25</option>
+                                    <option value="50" @selected(request('perPage', 50) == 50)>50</option>
+                                    <option value="100" @selected(request('perPage', 50) == 100)>100</option>
+                                    <option value="250" @selected(request('perPage', 50) == 250)>250</option>
+                                    <option value="500" @selected(request('perPage', 50) == 500)>500</option>
                                 </select>
-                                @foreach (request()->except('perPage') as $key => $value)
+                                @foreach (request()->except(['perPage', 'page'])  as $key => $value)
                                     <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                                 @endforeach
                             </form>
@@ -101,6 +102,10 @@
                                 Mostrant <strong>{{ $partides->count() }}</strong> de <strong>{{ $partides->total() }}</strong> partides
                             </div>
                         </div>
+                    </div>
+                    <!-- NOU: Paginació a la part de dalt -->
+                    <div class="mt-4 pagination">
+                        {{ $partides->appends(request()->query())->links() }}
                     </div>
 
                     <form method="POST" action="{{ route('partides.bulk.destroy') }}" id="bulk-delete-form">
