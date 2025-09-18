@@ -15,6 +15,7 @@
                             {{ session('success') }}
                         </div>
                     @endif
+                    
 
                     <!-- Formulari de Filtre Avançat -->
                     <div class="mb-4 p-4 bg-gray-50 rounded-lg border">

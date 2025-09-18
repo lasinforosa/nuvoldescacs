@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\LlibreController;
 use App\Http\Controllers\PartidaController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\JugadorController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -33,6 +34,9 @@ Route::middleware('auth')->group(function () {
     Route::resource('partides', PartidaController::class)->parameters([
     'partides' => 'partida'     
     ]);
+
+    Route::get('/jugadors', [JugadorController::class, 'index'])->name('jugadors.index');
+    Route::post('/jugadors/merge', [JugadorController::class, 'merge'])->name('jugadors.merge');
     
 });
 
