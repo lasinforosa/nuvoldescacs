@@ -29,9 +29,16 @@ class PartidaController extends Controller
             'ignore_colors' => 'nullable|boolean',
         ]);
 
-
+        // --- LÒGICA DE PAGINACIÓ PERSISTENT ---
+        if ($request->has('perPage')) {
+            // Si l'usuari tria un valor, el guardem a la sessió
+            session(['perPage' => $request->input('perPage')]);
+        }
+        // Llegim el valor de la sessió, amb 50 com a valor per defecte si no existeix
+        $perPage = session('perPage', 50);
+        
         // Agafem el valor de la URL, o posem 25 per defecte
-        $perPage = $request->input('perPage', 50);
+        // $perPage = $request->input('perPage', 50);
 
         // Comencem a construir la consulta a la base de dades pas a pas
         $query = Partida::query()->with(['blanques', 'negres']);
@@ -100,16 +107,22 @@ class PartidaController extends Controller
             $query->whereYear('data_partida', '<=', $request->input('search_year_to'));
         }
 
+
         // Un cop construïda la consulta, apliquem l'ordre i la paginació
         $partides = $query->orderBy('data_partida', 'desc')
-                      ->orderBy('event', 'asc')
-                      ->orderBy('ronda', 'asc')
-                      ->paginate($perPage);
+                    ->orderBy('event', 'asc')
+                    // Aquesta versió és molt més robusta i compatible
+                    ->orderByRaw('CAST(ronda AS UNSIGNED) DESC, ronda ASC')
+                    ->orderBy('id_partida', 'asc');
+            
+        $partides = $query->paginate($perPage);              
     
-        return view('partides.index', [
+         return view('partides.index', [
             'partides' => $partides,
             'search_inputs' => $request->all(),
+            'perPage' => $perPage, // Passem el valor actual per marcar el select correcte
         ]);
+
     }
 
     public function create()
@@ -226,54 +239,79 @@ class PartidaController extends Controller
         }
     }
 
-    public function store(Request $request)
+    /**
+     * Conté totes les regles de validació per a una partida.
+     * Centralitzem aquí per evitar inconsistències.
+     */
+    private function getValidationRules(): array
     {
-        $request->validate([
+        // $rondaText = $headers['Round'] ?? null;
+        return [
             'nom_blanques' => 'required|string|max:80',
             'nom_negres' => 'required|string|max:80',
             'pgn_moves' => 'required|string',
-            'ronda' => 'nullable|string|max:10',
+            'event' => 'nullable|string|max:80',
+            'site' => 'nullable|string|max:80',
+            'data_partida' => 'nullable|date',
+            'ronda' => 'nullable|string|max:10', // Regla de validació simple i correcta
+            // 'ronda' => $rondaText ? str_replace(',', '.', $rondaText) : null,
+            'resultat' => 'nullable|string|in:1-0,0-1,1/2-1/2,*',
+            'eco' => 'nullable|string|max:10',
+            'camps_extra' => 'nullable|string',
             'titol_blanques' => 'nullable|string|max:3',
             'titol_negres' => 'nullable|string|max:3',
+            'elo_blanques' => 'nullable|integer',
+            'elo_negres' => 'nullable|integer',
+            'equip_blanques' => 'nullable|string|max:80',
+            'equip_negres' => 'nullable|string|max:80',
             'fen_inicial' => 'nullable|string|max:90',
-            'eco' => 'nullable|string|max:10',
-        ]);
+        ];   
+    }
 
-        $findOrCreateIdentity = function(string $nomJugador): int {
-            $identitat = IdentitatJugador::where('nom', $nomJugador)->first();
-            if ($identitat) {
-                return $identitat->id_identitat;
-            } else {
-                $persona = Persona::create();
-                $novaIdentitat = $persona->identitats()->create(['nom' => $nomJugador]);
-                return $novaIdentitat->id_identitat;
-            }
-        };
+    private function findOrCreateIdentity(string $nomJugador, array &$cache): ?int
+    {
+        $nomJugador = trim($nomJugador);
+        if (empty($nomJugador) || $nomJugador === '?') return null;
+
+        if (isset($cache[$nomJugador])) { return $cache[$nomJugador]; }
+
+        $identitat = IdentitatJugador::where('nom', $nomJugador)->first();
+        if ($identitat) {
+            $cache[$nomJugador] = $identitat->id_identitat;
+            return $identitat->id_identitat;
+        } 
+        
+        $persona = Persona::create();
+        $novaIdentitat = $persona->identitats()->create(['nom' => $nomJugador]);
+        $cache[$nomJugador] = $novaIdentitat->id_identitat;
+        return $novaIdentitat->id_identitat;
+    }
+
+    
+    public function store(Request $request)
+    {
+        // Utilitzem la nostra funció de validació centralitzada
+        $validatedData = $request->validate($this->getValidationRules());
+        // $rondaText = $headers['Round'] ?? null;
 
         try {
             DB::beginTransaction();
-            $idBlanques = $findOrCreateIdentity($request->input('nom_blanques'));
-            $idNegres = $findOrCreateIdentity($request->input('nom_negres'));
-            Partida::create([
-                'event' => $request->input('event'),
-                'site' => $request->input('site'),
-                'data_partida' => $request->input('data_partida'),
-                'ronda' => $request->input('ronda'),
-                'resultat' => $request->input('resultat'),
+            $cache = [];
+            
+            $idBlanques = $this->findOrCreateIdentity($validatedData['nom_blanques'], $cache);
+            $idNegres = $this->findOrCreateIdentity($validatedData['nom_negres'], $cache);
+
+            // Afegim els IDs i el propietari a les dades abans de crear
+            $dataToCreate = array_merge($validatedData, [
                 'id_identitat_blanques' => $idBlanques,
                 'id_identitat_negres' => $idNegres,
-                'elo_blanques' => $request->input('elo_blanques'),
-                'elo_negres' => $request->input('elo_negres'),
-                'titol_blanques' => $request->input('titol_blanques'),
-                'titol_negres' => $request->input('titol_negres'),
-                'equip_blanques' => $request->input('equip_blanques'),
-                'equip_negres' => $request->input('equip_negres'),
-                'fen_inicial' => $request->input('fen_inicial'),
-                'eco' => $request->input('eco'), 
-                'pgn_moves' => $request->input('pgn_moves'),
                 'id_propietari' => auth()->id(),
                 'estatus' => 'privada',
+                // Normalitzem la ronda
+                'ronda' => isset($validatedData['ronda']) ? str_replace(',', '.', $validatedData['ronda']) : null
             ]);
+            
+            Partida::create($dataToCreate);
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -282,6 +320,7 @@ class PartidaController extends Controller
 
         return redirect()->route('partides.index')->with('success', 'Partida guardada correctament.');
     }
+    
 
     public function show(Request $request, Partida $partida)
     {
@@ -356,62 +395,34 @@ class PartidaController extends Controller
 
     public function update(Request $request, Partida $partida)
     {
-        // dd( $request->all());
-        $request->validate([
-            'nom_blanques' => 'required|string|max:80',
-            'nom_negres' => 'required|string|max:80',
-            'pgn_moves' => 'required|string',
-            'ronda' => 'nullable|string|max:10',
-            'titol_blanques' => 'nullable|string|max:3',
-            'titol_negres' => 'nullable|string|max:3',
-            'fen_inicial' => 'nullable|string|max:90',
-            'eco' => 'nullable|string|max:10',
-        ]);
+        // Utilitzem la mateixa funció de validació
+        $validatedData = $request->validate($this->getValidationRules());
 
-        $findOrCreateIdentity = function(string $nomJugador): int {
-            $identitat = IdentitatJugador::where('nom', $nomJugador)->first();
-            if ($identitat) {
-                return $identitat->id_identitat;
-            } else {
-                $persona = Persona::create();
-                $novaIdentitat = $persona->identitats()->create(['nom' => $nomJugador]);
-                return $novaIdentitat->id_identitat;
-            }
-        };
-        
         try {
             DB::beginTransaction();
-            $idBlanques = $findOrCreateIdentity($request->input('nom_blanques'));
-            $idNegres = $findOrCreateIdentity($request->input('nom_negres'));
+            $cache = [];
+            
+            $idBlanques = $this->findOrCreateIdentity($validatedData['nom_blanques'], $cache);
+            $idNegres = $this->findOrCreateIdentity($validatedData['nom_negres'], $cache);
 
-            // === LA PART CLAU I ARA COMPLETA ===
-            $partida->update([
-                'event' => $request->input('event'),
-                'site' => $request->input('site'),
-                'data_partida' => $request->input('data_partida'),
-                'ronda' => $request->input('ronda'),
-                'resultat' => $request->input('resultat'),
+            $dataToUpdate = array_merge($validatedData, [
                 'id_identitat_blanques' => $idBlanques,
                 'id_identitat_negres' => $idNegres,
-                'elo_blanques' => $request->input('elo_blanques'),
-                'elo_negres' => $request->input('elo_negres'),
-                'titol_blanques' => $request->input('titol_blanques'),
-                'titol_negres' => $request->input('titol_negres'),
-                'equip_blanques' => $request->input('equip_blanques'),
-                'equip_negres' => $request->input('equip_negres'),
-                'fen_inicial' => $request->input('fen_inicial'),
-                'eco' => $request->input('eco'),
-                'pgn_moves' => $request->input('pgn_moves'),
+                // Normalitzem la ronda
+                'ronda' => isset($validatedData['ronda']) ? str_replace(',', '.', $validatedData['ronda']) : null
             ]);
-            // dd($partide);
+
+            $partida->update($dataToUpdate);
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->withInput()->withErrors('Error en actualitzar la partida: ' . $e->getMessage());
         }
 
-        return redirect()->route('partides.index')->with('success', 'Partida actualitzada correctament.');
+        return redirect()->route('partides.index', $request->query())
+                         ->with('success', 'Partida actualitzada correctament.');
     }
+
 
     /**
      * Remove multiple specified resources from storage.
@@ -476,24 +487,7 @@ class PartidaController extends Controller
 
     // --- INICI DE LES FUNCIONS PRIVADES CENTRALITZADES ---
 
-    private function findOrCreateIdentity(string $nomJugador, array &$cache): ?int
-    {
-        $nomJugador = trim($nomJugador);
-        if (empty($nomJugador) || $nomJugador === '?') return null;
-
-        if (isset($cache[$nomJugador])) { return $cache[$nomJugador]; }
-
-        $identitat = IdentitatJugador::where('nom', $nomJugador)->first();
-        if ($identitat) {
-            $cache[$nomJugador] = $identitat->id_identitat;
-            return $identitat->id_identitat;
-        } 
-        
-        $persona = Persona::create();
-        $novaIdentitat = $persona->identitats()->create(['nom' => $nomJugador]);
-        $cache[$nomJugador] = $novaIdentitat->id_identitat;
-        return $novaIdentitat->id_identitat;
-    }
+    
 
     private function processAndSavePgn(string $pgnIndividual, array &$identitatsCache)
     {
@@ -503,6 +497,7 @@ class PartidaController extends Controller
             $parser = new PgnParserService($pgnIndividual);
             $headers = $parser->getHeaders();
             $movetext = $parser->getMovetext(); 
+            $rondaText = $headers['Round'] ?? null;
 
             // DEBUG
             // dd($headers, $movetext);
@@ -521,7 +516,7 @@ class PartidaController extends Controller
                 'event' => $headers['Event'] ?? null,
                 'site' => $headers['Site'] ?? null,
                 'data_partida' => isset($headers['Date']) ? preg_replace('/[^0-9-]/', '', str_replace('.', '-', $headers['Date'])) : null,
-                'ronda' => $headers['Round'] ?? null,
+                'ronda' => $rondaText ? str_replace(',', '.', $rondaText) : null,
                 'resultat' => $headers['Result'] ?? '*',
                 'eco' => $headers['ECO'] ?? null,
                 'camps_extra' => $headers['camps_extra'] ?? null,
@@ -543,6 +538,8 @@ class PartidaController extends Controller
             throw $e;
         }
     }
+
+
     
     // --- FI DE LES FUNCIONS PRIVADES ---
 }
