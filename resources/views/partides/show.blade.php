@@ -171,34 +171,35 @@
                         let moveHtml = '';
                         // NOU: Lògica de numeració corregida
                         if (turn === 'w') {
-                            moveHtml += `<span class="font-bold mr-1">${moveNumber}.</span>`;
-                        } else if (i === 0) {
-                            // Si és la primera jugada d'una seqüència i juguen negres, posem el número
-                            moveHtml += `<span class="font-bold mr-1">${moveNumber}...</span>`;
+                            container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);       
+                        } else {
+                            // Si juguen negres I és la primera jugada que pintem en aquest bloc,
+                            // o si la jugada anterior no era de blanques (inici de variant amb negres),
+                            // llavors posem el número.
+                            if (i === 0) {
+                                container.append(`<span class="font-bold mr-1">${moveNumber - 1}...</span>`);
+                           }
                         }
                         
                         const fenBeforeMove = localGame.fen();
                         const moveResult = localGame.move(moveData.san, { sloppy: true });
                         if (!moveResult) continue;
 
-                        // NOU: Ressaltat de la línia principal
-                        const fontWeightClass = isVariant ? 'font-normal' : 'font-bold';
-                        const moveColorClass = isVariant ? 'text-gray-700' : 'text-black';
-                        const moveSpan = $(`<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span ${fontWeightClass} ${moveColorClass}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
+                        // MILLORA ESTÈTICA: La línia principal té un color de fons molt subtil
+                        const moveBgClass = isVariant ? '' : 'bg-gray-100';
+                        const moveSpan = $(`<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span ${moveBgClass}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
                         
-                        moveHtml += moveSpan[0].outerHTML;
-                        container.append(moveHtml + ' ');
-
+                        container.append(moveSpan);
+                        container.append(' ');
+                        
                         if (moveData.comments) {
-                            const commentSpan = $(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em>`);
-                            container.append(commentSpan);
+                            container.append(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em> `);
                         }
                         
                         if (moveData.variants && moveData.variants.length > 0) {
                             for (const variant of moveData.variants) {
                                 const variantContainer = $('<div class="ml-4 border-l-2 border-indigo-200 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
-                                // La recursió ha de començar des de la posició ANTERIOR a la jugada
                                 renderTree(variant, variantContainer, new Chess(fenBeforeMove), true);
                             }
                         }
@@ -208,10 +209,7 @@
                         container.append('<span class="text-indigo-600 font-bold ml-1">)</span>');
                     }
                 }
-                
-
-                        
-
+ 
                 function loadGameFromPgn() {
                     try {
                         const tempGame = new Chess();
