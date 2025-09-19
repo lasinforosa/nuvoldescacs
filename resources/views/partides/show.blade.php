@@ -155,8 +155,62 @@
                 }
 
                             // === LA NOVA I MILLORADA FUNCIÓ renderTree ===
-                function renderTree(node, container, game, isVariant = false) {
-                    let localGame = new Chess(game.fen());
+                function renderTree(node, container, initialPgnMoves = []) {
+                    for (let i = 0; i < node.moves.length; i++) {
+                        const moveData = node.moves[i];
+
+                        // Creem una instància de joc per a AQUESTA línia de joc
+                        let localGame = new Chess();
+                        // Carreguem la història de la línia principal fins a aquest punt
+                        initialPgnMoves.forEach(move => localGame.move(move));
+
+                        const turn = localGame.turn();
+                        const moveNumber = Math.floor(localGame.history().length / 2) + 1;
+
+                        // LÒGICA DE NUMERACIÓ CORREGIDA I SIMPLIFICADA
+                        if (turn === 'w') {
+                            container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);
+                        } else if (i === 0) {
+                            container.append(`<span class="font-bold mr-1">${moveNumber}...</span>`);
+                        }
+
+                        const moveResult = localGame.move(moveData.san, { sloppy: true });
+                        if (!moveResult) continue;
+
+                        const moveClasses = [
+                            'cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span',
+                            isVariant ? 'font-normal text-gray-700' : 'font-bold'
+                        ];
+                        const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
+
+                        container.append(moveSpan);
+                        container.append(' ');
+
+                        if (moveData.comments) { container.append(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em> ` }
+
+                        if (moveData.variants && moveData.variants.length > 0) {
+                            for (const variant of moveData.variants) {
+                                const variantContainer = $('<div class="ml-4 border-l-2 border-gray-300 pl-2 mt-1"></div>');
+                                container.append(variantContainer);
+
+                                // La clau és aquí: passem la història de jugades actual
+                                const newInitialMoves = [...initialPgnMoves, moveData.san];
+                                renderTree(variant, variantContainer, newInitialMoves);
+                            }
+                        }
+                        
+                        
+                        const fenBeforeMove = localGame.fen();
+                        const moveResult = localGame.move(moveData.san, { sloppy: true });
+                        if (!moveResult) continue;
+
+                        // ESTIL FINAL: Negreta i subratllat per a la línia principal
+                        const moveSpan = $(`<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span font-bold" data-fen="${localGame.fen()}">${moveData.san}</span>`);
+                        
+                        container.append(moveSpan);
+                        container.append(' ');
+                        
+                        
 
                     if (isVariant) {
                         // La teva idea: un petit indicador visual per a les variants
@@ -182,10 +236,7 @@
                         if (!moveResult) continue;
 
                         // ESTIL FINAL: Negreta i subratllat per a la línia principal
-                        const moveClasses = [
-                            'cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span',
-                            isVariant ? 'font-normal text-gray-700' : 'font-bold'
-                        ];
+                        
                         const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
                         
                         container.append(moveSpan);
@@ -390,7 +441,7 @@
 
                 if (pgnData) {
                     const moveTree = pgnToTree(pgnData);
-                    renderTree(moveTree, $('#pgn-tree-container'), new Chess());
+                    renderTree(moveTree, $('#pgn-tree-container'), []);
                     board.position('start'); // Assegurem posició inicial visual
                 } else {
                     $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
