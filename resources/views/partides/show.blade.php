@@ -154,37 +154,62 @@
                     return tree;
                 }
 
-                function renderTree(node, container, game) {
+                            // === LA NOVA I MILLORADA FUNCIÓ renderTree ===
+                function renderTree(node, container, game, isVariant = false) {
                     let localGame = new Chess(game.fen());
 
-                    for (const moveData of node.moves) {
+                    if (isVariant) {
+                        container.append('<span class="text-indigo-600 font-bold mr-1">(</span>');
+                    }
+
+                    for (let i = 0; i < node.moves.length; i++) {
+                        const moveData = node.moves[i];
+                        
+                        const turn = localGame.turn();
+                        const moveNumber = Math.floor(localGame.history().length / 2) + 1;
+
                         let moveHtml = '';
-                        if (localGame.turn() === 'w') {
-                            moveHtml += `<span class="font-bold mr-1">${localGame.history().length / 2 + 1}.</span>`;
+                        // NOU: Lògica de numeració corregida
+                        if (turn === 'w') {
+                            moveHtml += `<span class="font-bold mr-1">${moveNumber}.</span>`;
+                        } else if (i === 0) {
+                            // Si és la primera jugada d'una seqüència i juguen negres, posem el número
+                            moveHtml += `<span class="font-bold mr-1">${moveNumber}...</span>`;
                         }
                         
                         const fenBeforeMove = localGame.fen();
                         const moveResult = localGame.move(moveData.san, { sloppy: true });
                         if (!moveResult) continue;
 
-                        const moveSpan = $(`<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span" data-fen="${localGame.fen()}">${moveData.san}</span>`);
+                        // NOU: Ressaltat de la línia principal
+                        const fontWeightClass = isVariant ? 'font-normal' : 'font-bold';
+                        const moveColorClass = isVariant ? 'text-gray-700' : 'text-black';
+                        const moveSpan = $(`<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span ${fontWeightClass} ${moveColorClass}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
                         
                         moveHtml += moveSpan[0].outerHTML;
                         container.append(moveHtml + ' ');
 
                         if (moveData.comments) {
-                            container.append(`<em class="text-gray-500 mx-1">{ ${moveData.comments.join(' ')} }</em> `);
+                            const commentSpan = $(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em>`);
+                            container.append(commentSpan);
                         }
                         
                         if (moveData.variants && moveData.variants.length > 0) {
                             for (const variant of moveData.variants) {
-                                const variantContainer = $('<div class="ml-4 border-l-2 pl-2 mt-1"></div>');
+                                const variantContainer = $('<div class="ml-4 border-l-2 border-indigo-200 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
-                                renderTree(variant, variantContainer, new Chess(fenBeforeMove));
+                                // La recursió ha de començar des de la posició ANTERIOR a la jugada
+                                renderTree(variant, variantContainer, new Chess(fenBeforeMove), true);
                             }
                         }
                     }
+                    
+                    if (isVariant) {
+                        container.append('<span class="text-indigo-600 font-bold ml-1">)</span>');
+                    }
                 }
+                
+
                         
 
                 function loadGameFromPgn() {
