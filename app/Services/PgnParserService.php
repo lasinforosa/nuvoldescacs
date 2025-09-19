@@ -65,7 +65,7 @@ class PgnParserService
        
         // Unim les línies de jugades i netegem el resultat final
         $movetext = implode("\n", $moveLines);
-        $this->movetext = trim(preg_replace('/\s*(1-0|0-1|1\/2-1\/2|\*)\s*$/', '', $movetext));
+        // $this->movetext = trim(preg_replace('/\s*(1-0|0-1|1\/2-1\/2|\*)\s*$/', '', $movetext));
 
         // DEBUG
         //dd($this->headers, $this->movetext);

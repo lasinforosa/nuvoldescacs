@@ -270,7 +270,8 @@
                     clearTimeout(analysisDebounceTimeout);
                     analysisDebounceTimeout = setTimeout(() => {
                         stockfish.postMessage('stop');
-                        stockfish.postMessage('position fen ' + game.fen());
+                        // LA CLAU: Sempre utilitzem el FEN de l'objecte 'game' principal
+                        stockfish.postMessage('position fen ' + game.fen()); 
                         stockfish.postMessage('go depth 18');
                     }, 250);
                 }
@@ -369,6 +370,7 @@
                 if (pgnData) {
                     const moveTree = pgnToTree(pgnData);
                     renderTree(moveTree, $('#pgn-tree-container'), new Chess());
+                    board.position('start'); // Assegurem posició inicial visual
                 } else {
                     $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
                 }
@@ -377,13 +379,19 @@
                 $('#pgn-tree-container').on('click', '.move-span', function() {
                     const fen = $(this).data('fen');
                     if (fen) {
+                        // 1. Actualitzem l'estat del joc principal
+                        game.load(fen);
+                        // 2. Actualitzem el tauler visual
                         board.position(fen);
-                        mainGame.load(fen); // Actualitzem l'estat del joc principal
                         
+                        // 3. Actualitzem el ressaltat
                         $('.move-span').removeClass('bg-yellow-200');
                         $(this).addClass('bg-yellow-200');
                         
-                        if (isAnalyzing) analyzePosition();
+                        // 4. Demanem la nova anàlisi
+                        if (isAnalyzing) {
+                            analyzePosition();
+                        }
                     }
                 });
 
