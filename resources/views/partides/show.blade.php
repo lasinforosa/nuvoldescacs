@@ -125,18 +125,18 @@
                 // --- 2. FUNCIONS ---
                 function pgnToTree(pgn) {
                     const pgnWithoutNewlines = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
-
-                    // Expressió regular millorada per capturar tokens
-                    const tokens = pgnWithoutNewlines.match(/\(|\)|\{[^}]*\}|\$\d+|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
+                    
+                    // EXPRESSIÓ REGULAR CORREGIDA PER ACCEPTAR ENROCS (O-O i O-O-O)
+                    const tokens = pgnWithoutNewlines.match(/\(|\)|\{[^}]*\}|\$\d+|O-O-O|O-O|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
                     
                     let tree = { moves: [] };
                     let path = [tree];
-                    
                     for (const token of tokens) {
+                        if (!token) continue;
                         let currentNode = path[path.length - 1];
                         if (token === '(') {
                             let lastMove = currentNode.moves[currentNode.moves.length - 1];
-                            if (!lastMove) continue; // Variant sense jugada prèvia
+                            if (!lastMove) continue;
                             if (!lastMove.variants) lastMove.variants = [];
                             let newVariant = { moves: [] };
                             lastMove.variants.push(newVariant);
@@ -147,7 +147,7 @@
                             let lastNode = currentNode.moves.length > 0 ? currentNode.moves[currentNode.moves.length - 1] : currentNode;
                             if (!lastNode.comments) lastNode.comments = [];
                             lastNode.comments.push(token.substring(1, token.length - 1).trim());
-                        } else {
+                        } else if (!/^\d+\.|\.\.$/.test(token) && !/1-0|0-1|1\/2-1\/2|\*/.test(token)) {
                             currentNode.moves.push({ san: token });
                         }
                     }
@@ -276,7 +276,7 @@
                 }
 
                 function initializeStockfish() { 
-                    $('#analysis-evaluation').text(`Carregant motor...`);
+                     $('#analysis-evaluation').text(`Carregant motor...`);
                     stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
                     
                     stockfish.onmessage = function(event) {
@@ -291,6 +291,7 @@
                             // ... (lògica de parseig de score cp i mate, sense canvis) ...
                         }
                     };
+                    stockfish.onerror = (e) => $('#stockfish-monitor').append(`<p class="text-red-500">ERROR: ${e.message}</p>`);
                     stockfish.postMessage('uci');
                 }
 
