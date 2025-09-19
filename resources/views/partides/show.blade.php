@@ -276,7 +276,8 @@
                 }
 
                 function initializeStockfish() { 
-                     $('#analysis-evaluation').text(`Carregant motor...`);
+                     if (stockfish) { analyzePosition(); return; }
+                    $('#analysis-evaluation').text(`Carregant motor...`);
                     stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
                     
                     stockfish.onmessage = function(event) {
@@ -288,10 +289,36 @@
                             stockfish.postMessage('ucinewgame');
                             analyzePosition();
                         } else if (message.startsWith('info depth')) {
-                            // ... (lògica de parseig de score cp i mate, sense canvis) ...
+                            const currentFen = game.fen(); // Guardem el FEN actual
+                            const turn = game.turn();
+                            
+                            if (message.includes('score cp')) {
+                                const scoreMatch = message.match(/score cp (-?\d+)/);
+                                const pvMatch = message.match(/pv (.+)/);
+                                if (scoreMatch && pvMatch) {
+                                    const bestLineSan = translateLanToSan(pvMatch[1], currentFen);
+                                    let displayScore = (scoreMatch[1] / 100).toFixed(2);
+                                    if (turn === 'b') displayScore = (-displayScore).toFixed(2);
+                                    
+                                    $('#analysis-evaluation').text(`Valoració: ${displayScore}`);
+                                    $('#analysis-best-line').text(`Millor línia: ${bestLineSan}`);
+                                    updateEvalBar(scoreMatch[1], turn);
+                                }
+                            } else if (message.includes('score mate')) {
+                                const scoreMatch = message.match(/score mate (-?\d+)/);
+                                const pvMatch = message.match(/pv (.+)/);
+                                if (scoreMatch && pvMatch) {
+                                    const bestLineSan = translateLanToSan(pvMatch[1], currentFen);
+                                    let displayMate = `Mat en ${scoreMatch[1]}`;
+                                    if (turn === 'b') displayMate = `Mat en ${-scoreMatch[1]}`;
+                                    
+                                    $('#analysis-evaluation').text(`Valoració: ${displayMate}`);
+                                    $('#analysis-best-line').text(`Millor línia: ${bestLineSan}`);
+                                    updateEvalBar('M' + scoreMatch[1], turn);
+                                }
+                            }
                         }
                     };
-                    stockfish.onerror = (e) => $('#stockfish-monitor').append(`<p class="text-red-500">ERROR: ${e.message}</p>`);
                     stockfish.postMessage('uci');
                 }
 
@@ -309,6 +336,31 @@
                     }
                 }
 
+                function translateLanToSan(lanMoves, currentFen) {
+                    // ARA REP EL FEN ACTUAL PER SER ROBUSTA
+                    const tempGame = new Chess(currentFen);
+                    let sanLine = '';
+                    const moves = lanMoves.split(' ');
+                    for (const lan of moves) {
+                        const moveResult = tempGame.move(lan, { sloppy: true });
+                        if (moveResult) sanLine += moveResult.san + ' ';
+                    }
+                    return sanLine.trim();
+                }
+
+                function updateEvalBar(evaluation, turn) {
+                    let score = 0;
+                    if (evaluation.startsWith('M')) {
+                        score = evaluation.includes('-') ? -1000 : 1000;
+                    } else {
+                        score = parseInt(evaluation);
+                    }
+                    if (turn === 'b') score = -score;
+                    const cappedScore = Math.max(-800, Math.min(800, score));
+                    const whiteHeight = 50 + (cappedScore / 800) * 50;
+                    $('#eval-bar-white').css({ 'height': `${whiteHeight}%`, 'width': '100%' });
+                    $('#eval-bar-black').css({ 'height': `${100 - whiteHeight}%`, 'width': '100%' });
+                }
 
                 // --- 3. INICIALITZACIÓ I GESTORS D'ESDEVENIMENTS ---
                 board = Chessboard('board', boardConfig);
