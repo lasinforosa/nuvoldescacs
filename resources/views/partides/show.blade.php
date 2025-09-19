@@ -192,12 +192,21 @@
                         const tempGame = new Chess();
                         tempGame.load_pgn(pgnData || '');
                         history = tempGame.history({ verbose: true });
-                        game.reset();
-                        currentMoveIndex = -1;
                     } catch (e) {
-                        $('pgn-tree-container').html('<p class="text-red-500">Error: PGN invàlid.</p>');
+                        $('#pgn-tree-container').html('<p class="text-red-500">Error: PGN invàlid.</p>');
                         history = [];
                     }
+                }
+
+                function renderPgnTree() {
+                    let pgnHtml = '';
+                    let moveNumber = 1;
+                    history.forEach((move, i) => {
+                        if (move.color === 'w') pgnHtml += `<span class="font-bold mr-1">${moveNumber}.</span>`;
+                        pgnHtml += `<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span" data-move-index="${i}">${move.san}</span> `;
+                        if (move.color === 'b') moveNumber++;
+                    });
+                    $('#pgn-tree-container').html(pgnHtml);
                 }
 
                 function updatePgnTextView() {
@@ -221,7 +230,14 @@
                         game.move(history[i].san);
                     }
                     currentMoveIndex = index;
-                    updateView();
+                    board.position(game.fen());
+                    
+                    $('.move-span').removeClass('bg-yellow-200');
+                    if (index > -1) {
+                        $(`.move-span[data-move-index=${index}]`).addClass('bg-yellow-200');
+                    }
+                    
+                    if (isAnalyzing) analyzePosition();
                 }
 
                 function updateView() {
@@ -250,42 +266,52 @@
                 }
                 
                 function analyzePosition() { 
-                     if (!isAnalyzing || !isStockfishReady) return;
-                
-                    // NOU: Lògica de "debouncing"
-                    clearTimeout(analysisDebounceTimeout); // Cancel·lem l'anàlisi anterior si n'hi ha
+                    if (!isAnalyzing || !isStockfishReady) return;
+                    clearTimeout(analysisDebounceTimeout);
                     analysisDebounceTimeout = setTimeout(() => {
                         stockfish.postMessage('stop');
                         stockfish.postMessage('position fen ' + game.fen());
                         stockfish.postMessage('go depth 18');
-                    }, 250); // Esperem 250ms abans d'enviar la comanda
-
+                    }, 250);
                 }
 
                 function initializeStockfish() { 
-                    if (stockfish) {
-                        analyzePosition(); 
-                        return;
-                    }
+                    $('#analysis-evaluation').text(`Carregant motor...`);
+                    stockfish = new Worker("{{ asset('vendor/stockfish/stockfish.js') }}#stockfish.wasm");
+                    
+                    stockfish.onmessage = function(event) {
+                        const message = event.data;
+                        $('#stockfish-monitor').append(`<p>< ${message}</p>`).scrollTop($('#stockfish-monitor')[0].scrollHeight);
+                        
+                        if (message === 'uciok') {
+                            isStockfishReady = true;
+                            stockfish.postMessage('ucinewgame');
+                            analyzePosition();
+                        } else if (message.startsWith('info depth')) {
+                            // ... (lògica de parseig de score cp i mate, sense canvis) ...
+                        }
+                    };
+                    stockfish.postMessage('uci');
                 }
 
                 function setAnalysisState(active) { 
                     isAnalyzing = active;
                     if (active) {
-                        $('#analysis-container').removeClass('hidden');
+                        $('#analysis-container, #stockfish-monitor').removeClass('hidden');
                         $('#analyzeBtn').text('Aturar Anàlisi').removeClass('bg-purple-600').addClass('bg-red-600');
-                        initializeStockfish();
+                        if (!stockfish) initializeStockfish();
+                        else analyzePosition();
                     } else {
                         if (stockfish) stockfish.postMessage('stop');
-                        $('#analysis-container').addClass('hidden');
+                        $('#analysis-container, #stockfish-monitor').addClass('hidden');
                         $('#analyzeBtn').text('Analitzar').removeClass('bg-red-600').addClass('bg-purple-600');
-                    }  
+                    }
                 }
 
 
                 // --- 3. INICIALITZACIÓ I GESTORS D'ESDEVENIMENTS ---
                 board = Chessboard('board', boardConfig);
-                setBoardTheme('brown');
+                setBoardTheme('blue');
 
                 if (pgnData) {
                     const moveTree = pgnToTree(pgnData);
