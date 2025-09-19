@@ -158,6 +158,11 @@
                 function renderTree(node, container, game, isVariant = false) {
                     let localGame = new Chess(game.fen());
 
+                    if (isVariant) {
+                        // La teva idea: un petit indicador visual per a les variants
+                        container.append('<span class="text-indigo-500 mr-1">&raquo;</span>');
+                    }
+
                     for (let i = 0; i < node.moves.length; i++) {
                         const moveData = node.moves[i];
                         
@@ -167,9 +172,9 @@
                         // LÒGICA DE NUMERACIÓ CORREGIDA I SIMPLIFICADA
                         if (turn === 'w') {
                             container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);
-                        } else if (i === 0 && isVariant) {
+                        } else if (i === 0) {
                             // Només per a l'inici d'una variant que comença amb negres
-                            container.append(`<span class="font-bold mr-1">${moveNumber - 1}...</span>`);
+                            container.append(`<span class="font-bold mr-1">${moveNumber}...</span>`);
                         }
                         
                         const fenBeforeMove = localGame.fen();
@@ -195,7 +200,8 @@
                                 // Creem un contenidor per a la variant amb el sagnat
                                 const variantContainer = $('<div class="ml-4 border-l-2 border-gray-300 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
-                                // La recursió comença des de la posició ANTERIOR a la jugada
+                                // Utilitzem 'localGame' per a la recursió, no 'game'
+                                container.append(" ["); container.append(fenBeforeMove); container.append("] ");
                                 renderTree(variant, variantContainer, new Chess(fenBeforeMove), true);
                             }
                         }
