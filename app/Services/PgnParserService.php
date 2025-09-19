@@ -42,30 +42,25 @@ class PgnParserService
         foreach ($lines as $line) {
             $trimmedLine = trim($line);
 
-            // Si la línia està buida i ja tenim capçaleres, canviem a llegir jugades
-            if (empty($trimmedLine)) {
-                // Si la línia està buida i ja tenim capçaleres, és el separador
-                if ($isReadingHeaders && !empty($headerLines)) {
-                    $isReadingHeaders = false;
-                }
-                // Si ja estem llegint jugades, un salt de línia és part del PGN
-                if (!$isReadingHeaders) {
-                    $moveLines[] = $line;
-                }
-                continue;
+            // Si la línia està buida i ja hem llegit alguna capçalera, és el separador
+            if (empty($trimmedLine) && !empty($headerLines) && $isReadingHeaders) {
+                $isReadingHeaders = false;
+                continue; // No afegim la línia en blanc al movetext
             }
-            // Aquesta és la correcció clau: una expressió regular més tolerant
-            if ($isReadingHeaders && preg_match('/^\[\s*([A-Za-z]+)\s*"(.*)"\s*\]$/', $trimmedLine, $matches)) {
+
+            // Si la línia no és una capçalera, comencen les jugades
+            if ($isReadingHeaders && strpos($trimmedLine, '[') !== 0) {
+                 if(strlen($trimmedLine) > 0) $isReadingHeaders = false;
+            }
+
+            if ($isReadingHeaders) {
                 $headerLines[] = $trimmedLine;
             } else {
-                // Si la línia no encaixa en el patró de capçalera, comencen les jugades
-                if (strlen($trimmedLine) > 0) { // Ignorem línies completament buides
-                    $isReadingHeaders = false;
-                    $moveLines[] = $line; // Guardem la línia original, no la 'trimmed'
-                }
+                // Afegim la línia al movetext, fins i tot si està buida (pot ser part del format)
+                $moveLines[] = $line;
             }
         }
-
+        
         $this->parseHeaders($headerLines);
        
         // Unim les línies de jugades i netegem el resultat final
