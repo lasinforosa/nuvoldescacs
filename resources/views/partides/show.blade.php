@@ -141,11 +141,23 @@
                     let moveNumber = 1;
                     for (let i = 0; i < history.length; i++) {
                         if (history[i].color === 'w') { pgnHtml += `<span class="font-bold mr-1">${moveNumber}.</span>`; }
+                        
+                        // AFEGIM L'ATRIBUT 'data-move-index' PER PODER IDENTIFICAR CADA JUGADA
                         let moveStyle = (i === currentMoveIndex) ? 'bg-yellow-200' : '';
-                        pgnHtml += `<span class="${moveStyle} p-1 rounded">${history[i].san}</span> `;
+                        pgnHtml += `<span class="${moveStyle} p-1 rounded cursor-pointer hover:bg-yellow-300 move-span" data-move-index="${i}">${history[i].san}</span> `;
+                        
                         if (history[i].color === 'b') { moveNumber++; }
                     }
                     $('#pgn-display').html(pgnHtml);
+                }
+
+                function goToMove(index) {
+                    game.reset();
+                    for (let i = 0; i <= index; i++) {
+                        game.move(history[i].san);
+                    }
+                    currentMoveIndex = index;
+                    updateView();
                 }
 
                 function updateView() {
@@ -178,7 +190,11 @@
                 function setAnalysisState(active) { /* ... (sense canvis) ... */ }
 
                 // --- 3. INICIALITZACIÓ I GESTORS D'ESDEVENIMENTS ---
-                board = Chessboard('board', boardConfig);
+                 board = Chessboard('board', {
+                    position: 'start',
+                    draggable: false,
+                    pieceTheme: '/img/chesspieces/wikipedia/{piece}.png'
+                });
                 loadGameFromPgn();
                 updateView();
                 setBoardTheme('brown');
@@ -188,7 +204,19 @@
                 $('#nextBtn').on('click', () => { if(currentMoveIndex < history.length - 1) { currentMoveIndex++; game.move(history[currentMoveIndex].san); updateView(); }});
                 $('#endBtn').on('click', () => { game.load_pgn(pgnData || ''); currentMoveIndex = history.length - 1; updateView(); });
 
-                $('#flipBtn').on('click', () => board.flip());
+                // NOU: NAVEGACIÓ AMB CLIC
+                $('#pgn-display').on('click', '.move-span', function() {
+                    const moveIndex = $(this).data('move-index');
+                    goToMove(moveIndex);
+                });
+
+                // CONTROL DEL TAULER (AMB LA CORRECCIÓ PER A 'flip')
+                $('#flipBtn').on('click', () => {
+                    board.flip();
+                    // Tornem a aplicar el tema de colors després de girar
+                    setBoardTheme($('#board-theme').val());
+                });
+                
                 $('#analyzeBtn').on('click', () => setAnalysisState(!isAnalyzing));
                 
                 $('#piece-theme').on('change', function() {
