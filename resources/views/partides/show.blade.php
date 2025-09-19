@@ -99,6 +99,7 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
         <script src="{{ asset('vendor/chessboard/chessboard-1.0.0.min.js') }}"></script>
         <script>
+
             $(document).ready(function() {
                 // --- 1. VARIABLES I DADES ---
                 let board = null;
@@ -123,8 +124,10 @@
 
                 // --- 2. FUNCIONS ---
                 function pgnToTree(pgn) {
-                    const pgnWithoutNewlines = pgn.replace(/(\r\n|\n|\r)/gm, " ");
-                    let tokens = pgnWithoutNewlines.match(/\(|\)|\{[^}]*\}|[\w\+\#\=\-\/]+/g) || [];
+                    const pgnWithoutNewlines = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
+
+                    // Expressió regular millorada per capturar tokens
+                    const tokens = pgnWithoutNewlines.match(/\(|\)|\{[^}]*\}|\$\d+|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
                     
                     let tree = { moves: [] };
                     let path = [tree];
@@ -133,63 +136,53 @@
                         let currentNode = path[path.length - 1];
                         if (token === '(') {
                             let lastMove = currentNode.moves[currentNode.moves.length - 1];
+                            if (!lastMove) continue; // Variant sense jugada prèvia
                             if (!lastMove.variants) lastMove.variants = [];
                             let newVariant = { moves: [] };
                             lastMove.variants.push(newVariant);
                             path.push(newVariant);
                         } else if (token === ')') {
-                            path.pop();
+                            if (path.length > 1) path.pop();
                         } else if (token.startsWith('{')) {
                             let lastNode = currentNode.moves.length > 0 ? currentNode.moves[currentNode.moves.length - 1] : currentNode;
                             if (!lastNode.comments) lastNode.comments = [];
                             lastNode.comments.push(token.substring(1, token.length - 1).trim());
-                        } else if (!/^\d+\.|\.\.$/.test(token) && !/1-0|0-1|1\/2-1\/2|\*/.test(token)) {
+                        } else {
                             currentNode.moves.push({ san: token });
                         }
                     }
                     return tree;
                 }
 
-                function renderTree(node, container, game, isVariant = false) {
+                function renderTree(node, container, game) {
                     let localGame = new Chess(game.fen());
-                    
-                    for (let i = 0; i < node.moves.length; i++) {
-                        const moveData = node.moves[i];
-                        const moveSan = moveData.san.replace(/[?!#+]/g, ''); // Neteja per a chess.js
-                        
+
+                    for (const moveData of node.moves) {
                         let moveHtml = '';
-                        if (turn === 'w') {
-                            moveHtml += `<span class="font-bold mr-1">${Math.floor(localGame.history().length / 2) + 1}.</span>`;
-                        } else if (i === 0 && isVariant) {
-                            moveHtml += `<span class="font-bold mr-1">${Math.floor(localGame.history().length / 2)}...</span>`;
+                        if (localGame.turn() === 'w') {
+                            moveHtml += `<span class="font-bold mr-1">${localGame.history().length / 2 + 1}.</span>`;
                         }
-
-                        // Guardem el FEN *abans* de fer la jugada
+                        
                         const fenBeforeMove = localGame.fen();
-                        const moveResult = localGame.move(moveSan);
-
+                        const moveResult = localGame.move(moveData.san, { sloppy: true });
                         if (!moveResult) continue;
 
-                        const moveSpan = $(`<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span">${moveData.san}</span>`);
-                        moveSpan.data('fen', localGame.fen()); // Guardem el FEN resultant
+                        const moveSpan = $(`<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span" data-fen="${localGame.fen()}">${moveData.san}</span>`);
                         
                         moveHtml += moveSpan[0].outerHTML;
                         container.append(moveHtml + ' ');
 
                         if (moveData.comments) {
-                            const commentSpan = $(`<em class="text-gray-500 mx-1">{ ${moveData.comments.join(' ')} }</em>`);
-                            container.append(commentSpan);
+                            container.append(`<em class="text-gray-500 mx-1">{ ${moveData.comments.join(' ')} }</em> `);
                         }
                         
                         if (moveData.variants && moveData.variants.length > 0) {
-                            for (let variant of moveData.variants) {
+                            for (const variant of moveData.variants) {
                                 const variantContainer = $('<div class="ml-4 border-l-2 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
-                                // La recursió ha de començar des de la posició ANTERIOR a la jugada
-                                renderTree(variant, variantContainer, new Chess(fenBeforeMove), true);
+                                renderTree(variant, variantContainer, new Chess(fenBeforeMove));
                             }
                         }
-                        turn = localGame.turn();
                     }
                 }
                         
@@ -256,23 +249,52 @@
                     }, 50);
                 }
                 
-                function analyzePosition() { /* ... (sense canvis) ... */ }
-                function initializeStockfish() { /* ... (sense canvis) ... */ }
-                function setAnalysisState(active) { /* ... (sense canvis) ... */ }
+                function analyzePosition() { 
+                     if (!isAnalyzing || !isStockfishReady) return;
+                
+                    // NOU: Lògica de "debouncing"
+                    clearTimeout(analysisDebounceTimeout); // Cancel·lem l'anàlisi anterior si n'hi ha
+                    analysisDebounceTimeout = setTimeout(() => {
+                        stockfish.postMessage('stop');
+                        stockfish.postMessage('position fen ' + game.fen());
+                        stockfish.postMessage('go depth 18');
+                    }, 250); // Esperem 250ms abans d'enviar la comanda
+
+                }
+
+                function initializeStockfish() { 
+                    if (stockfish) {
+                        analyzePosition(); 
+                        return;
+                    }
+                }
+
+                function setAnalysisState(active) { 
+                    isAnalyzing = active;
+                    if (active) {
+                        $('#analysis-container').removeClass('hidden');
+                        $('#analyzeBtn').text('Aturar Anàlisi').removeClass('bg-purple-600').addClass('bg-red-600');
+                        initializeStockfish();
+                    } else {
+                        if (stockfish) stockfish.postMessage('stop');
+                        $('#analysis-container').addClass('hidden');
+                        $('#analyzeBtn').text('Analitzar').removeClass('bg-red-600').addClass('bg-purple-600');
+                    }  
+                }
+
 
                 // --- 3. INICIALITZACIÓ I GESTORS D'ESDEVENIMENTS ---
                 board = Chessboard('board', boardConfig);
                 setBoardTheme('brown');
 
-                // La gran crida
                 if (pgnData) {
                     const moveTree = pgnToTree(pgnData);
                     renderTree(moveTree, $('#pgn-tree-container'), new Chess());
                 } else {
-                    $('#pgn-tree-container').html('<p>No hi ha jugades per a aquesta partida.</p>');
+                    $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
                 }
 
-                // Gestor de clics 
+                // Gestor de clics (ara funciona)
                 $('#pgn-tree-container').on('click', '.move-span', function() {
                     const fen = $(this).data('fen');
                     if (fen) {
@@ -296,12 +318,7 @@
                 $('#endBtn').on('click', () => { game.load_pgn(pgnData || ''); currentMoveIndex = history.length - 1; updateView(); });
                 */
 
-                // NOU: NAVEGACIÓ AMB CLIC
-                $('#pgn-tree-container').on('click', '.move-span', function() {
-                    const moveIndex = $(this).data('move-index');
-                    goToMove(moveIndex);
-                });
-
+                
                 // CONTROL DEL TAULER (AMB LA CORRECCIÓ PER A 'flip')
                 $('#flipBtn').on('click', () => {
                     board.flip();
