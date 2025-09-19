@@ -45,15 +45,13 @@
                                         <div>
                                             <label for="piece-theme" class="text-sm">Peces</label>
                                             <select id="piece-theme" class="block mt-1 w-full rounded-md shadow-sm border-gray-300 text-sm">
-                                                <option value="wikipedia" data-format="png">Wikipedia (png)</option>
-                                                <option value="berlin" data-format="svg">Berlin (svg)</option>  
+                                                <!-- Les teves opcions de peces van aquí -->
+                                                <option value="wikipedia" data-format="png">Wikipedia (png)</option>    
+                                                <option value="berlin" data-format="svg">Berlin (svg)</option>
                                                 <option value="cburnett" data-format="svg">Cburnett (svg)</option> 
-                                                <option value="chess_com" data-format="png">Chess_com (png)</option>
-                                                <option value="chess_com" data-format="svg">Chess_com (svg)</option> 
+                                                <option value="chess_com" data-format="png">Chess.com (png)</option>
                                                 <option value="julius" data-format="svg">Julius (svg)</option>
                                                 <option value="merida" data-format="svg">Merida (svg)</option>
-                                                <option value="merida-new" data-format="svg">Merida new (svg)</option>
-                                                <option value="usual" data-format="svg">Usual (svg)</option>
                                             </select>
                                         </div>
                                         <div>
@@ -103,12 +101,13 @@
         <script>
             $(document).ready(function() {
                 // --- 1. VARIABLES I DADES ---
+                // --- 1. VARIABLES ---
                 let board = null;
                 const game = new Chess();
                 const pgnData = @json($partida->pgn_moves);
                 let history = [];
-                let currentMoveIndex = -1; // Comencem a -1 (posició inicial)
-
+                let currentMoveIndex = -1;
+                
                 let boardConfig = {
                     draggable: false,
                     position: 'start',
@@ -121,10 +120,7 @@
                     blue:  { light: '#dee3e6', dark: '#8ca2ad' }
                 };
                 
-                let stockfish = null;
-                let isAnalyzing = false;
-                let isStockfishReady = false;
-                let analysisDebounceTimeout = null;
+                let stockfish = null, isAnalyzing = false, isStockfishReady = false, analysisDebounceTimeout = null;
 
                 // --- 2. FUNCIONS ---
                 function loadGameFromPgn() {
@@ -144,14 +140,10 @@
                     let pgnHtml = '';
                     let moveNumber = 1;
                     for (let i = 0; i < history.length; i++) {
-                        if (history[i].color === 'w') {
-                            pgnHtml += `<span class="font-bold mr-1">${moveNumber}.</span>`;
-                        }
+                        if (history[i].color === 'w') { pgnHtml += `<span class="font-bold mr-1">${moveNumber}.</span>`; }
                         let moveStyle = (i === currentMoveIndex) ? 'bg-yellow-200' : '';
                         pgnHtml += `<span class="${moveStyle} p-1 rounded">${history[i].san}</span> `;
-                        if (history[i].color === 'b') {
-                            moveNumber++;
-                        }
+                        if (history[i].color === 'b') { moveNumber++; }
                     }
                     $('#pgn-display').html(pgnHtml);
                 }
@@ -159,9 +151,7 @@
                 function updateView() {
                     board.position(game.fen());
                     updatePgnTextView();
-                    if (isAnalyzing) {
-                        analyzePosition();
-                    }
+                    if (isAnalyzing) analyzePosition();
                 }
 
                 function redrawBoard() {
@@ -173,10 +163,11 @@
                 function setBoardTheme(themeName) {
                     const theme = colorThemes[themeName];
                     if (!theme) return;
-                    // Cal esperar un instant perquè chessboard.js creï els divs
                     setTimeout(() => {
                         $('#board .square-55d63').each(function() {
-                            const isBlackSquare = $(this).attr('class').indexOf('black-3c85d') > -1;
+                            const isBlackSquare = ($(this).width() === $(this).height()) ?
+                                ($(this).attr('class').indexOf('black') > -1) :
+                                (($(this).parent().parent().index() + $(this).parent().index()) % 2 === 0);
                             $(this).css('background-color', isBlackSquare ? theme.dark : theme.light);
                         });
                     }, 50);
@@ -196,7 +187,7 @@
                 $('#prevBtn').on('click', () => { if(currentMoveIndex >= 0) { game.undo(); currentMoveIndex--; updateView(); }});
                 $('#nextBtn').on('click', () => { if(currentMoveIndex < history.length - 1) { currentMoveIndex++; game.move(history[currentMoveIndex].san); updateView(); }});
                 $('#endBtn').on('click', () => { game.load_pgn(pgnData || ''); currentMoveIndex = history.length - 1; updateView(); });
-                
+
                 $('#flipBtn').on('click', () => board.flip());
                 $('#analyzeBtn').on('click', () => setAnalysisState(!isAnalyzing));
                 
@@ -206,7 +197,7 @@
                     boardConfig.position = board.fen();
                     redrawBoard();
                 });
-                $('#board-theme').on('change', function() { setBoardTheme($(this).val()); });
+                $('#board-theme').on('change', () => setBoardTheme($('#board-theme').val()));
 
                 $(document).on('keydown', function(e) {
                     if (e.key === 'ArrowLeft') { e.preventDefault(); $('#prevBtn').click(); }
