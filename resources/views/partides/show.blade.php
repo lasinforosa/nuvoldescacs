@@ -158,36 +158,30 @@
                 function renderTree(node, container, game, isVariant = false) {
                     let localGame = new Chess(game.fen());
 
-                    if (isVariant) {
-                        container.append('<span class="text-indigo-600 font-bold mr-1">(</span>');
-                    }
-
                     for (let i = 0; i < node.moves.length; i++) {
                         const moveData = node.moves[i];
                         
                         const turn = localGame.turn();
                         const moveNumber = Math.floor(localGame.history().length / 2) + 1;
-
-                        let moveHtml = '';
-                        // NOU: Lògica de numeració corregida
+      
+                        // LÒGICA DE NUMERACIÓ CORREGIDA I SIMPLIFICADA
                         if (turn === 'w') {
-                            container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);       
-                        } else {
-                            // Si juguen negres I és la primera jugada que pintem en aquest bloc,
-                            // o si la jugada anterior no era de blanques (inici de variant amb negres),
-                            // llavors posem el número.
-                            if (i === 0) {
-                                container.append(`<span class="font-bold mr-1">${moveNumber - 1}...</span>`);
-                           }
+                            container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);
+                        } else if (i === 0 && isVariant) {
+                            // Només per a l'inici d'una variant que comença amb negres
+                            container.append(`<span class="font-bold mr-1">${moveNumber - 1}...</span>`);
                         }
                         
                         const fenBeforeMove = localGame.fen();
                         const moveResult = localGame.move(moveData.san, { sloppy: true });
                         if (!moveResult) continue;
 
-                        // MILLORA ESTÈTICA: La línia principal té un color de fons molt subtil
-                        const moveBgClass = isVariant ? '' : 'bg-gray-100';
-                        const moveSpan = $(`<span class="cursor-pointer hover:bg-yellow-300 p-1 rounded move-span ${moveBgClass}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
+                        // ESTIL FINAL: Negreta i subratllat per a la línia principal
+                        const moveClasses = [
+                            'cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span',
+                            isVariant ? 'font-normal text-gray-700' : 'font-bold'
+                        ];
+                        const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
                         
                         container.append(moveSpan);
                         container.append(' ');
@@ -198,16 +192,14 @@
                         
                         if (moveData.variants && moveData.variants.length > 0) {
                             for (const variant of moveData.variants) {
-                                const variantContainer = $('<div class="ml-4 border-l-2 border-indigo-200 pl-2 mt-1"></div>');
+                                // Creem un contenidor per a la variant amb el sagnat
+                                const variantContainer = $('<div class="ml-4 border-l-2 border-gray-300 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
+                                // La recursió comença des de la posició ANTERIOR a la jugada
                                 renderTree(variant, variantContainer, new Chess(fenBeforeMove), true);
                             }
                         }
-                    }
-                    
-                    if (isVariant) {
-                        container.append('<span class="text-indigo-600 font-bold ml-1">)</span>');
-                    }
+                    }                  
                 }
  
                 function loadGameFromPgn() {
