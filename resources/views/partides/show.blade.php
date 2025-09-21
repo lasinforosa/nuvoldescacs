@@ -126,7 +126,7 @@
                 function pgnToTree(pgn) {
                     const pgnWithoutNewlines = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
                     
-                    // EXPRESSIÓ REGULAR CORREGIDA PER ACCEPTAR ENROCS (O-O i O-O-O)
+                    // Expressió regular millorada per ignorar explícitament els números de jugada
                     const tokens = pgnWithoutNewlines.match(/\(|\)|\{[^}]*\}|\$\d+|O-O-O|O-O|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
                     
                     let tree = { moves: [] };
@@ -154,46 +154,47 @@
                     return tree;
                 }
 
-                            // === LA NOVA I MILLORADA FUNCIÓ renderTree ===
+                // === LA NOVA I MILLORADA FUNCIÓ renderTree ===
                 function renderTree(node, container, gameHistory, isVariant = false) {
-                    if (isVariant) {
-                        container.append('<span class="text-indigo-500 mr-1">&raquo;</span>');
-                    }
                     
+                    let localGame = new Chess(game.fen());
+
                     for (let i = 0; i < node.moves.length; i++) {
                         const moveData = node.moves[i];
-                        let tempGame = new Chess();
-                        gameHistory.forEach(m => tempGame.move(m));
-
-                        const turn = tempGame.turn();
-                        const moveNumber = Math.floor(tempGame.history().length / 2) + 1;
-
-                        // LÒGICA DE NUMERACIÓ CORREGIDA I SIMPLIFICADA
+                        
+                        const turn = localGame.turn();
+                        const moveNumber = Math.floor(localGame.history().length / 2) + 1;
+                        
                         if (turn === 'w') {
                             container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);
                         } else if (i === 0) {
                             container.append(`<span class="font-bold mr-1">${moveNumber}...</span>`);
                         }
+                        
+                        const fenBeforeMove = localGame.fen();
+                        const moveResult = localGame.move(moveData.san, { sloppy: true });
+                        if (!moveResult) {
+                            // Si la jugada és invàlida (com un número), la mostrem en vermell i parem
+                            container.append(`<span class="text-red-500 font-bold p-1">${moveData.san}</span> `);
+                            continue;
+                        };
 
-                        const moveResult = tempGame.move(moveData.san, { sloppy: true });
-                        if (!moveResult) continue;
-
-                        const moveClasses = ['cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span', isVariant ? 'font-normal text-gray-700' : 'font-bold'];
-                        const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${tempGame.fen()}">${moveData.san}</span>`);
+                        const moveClasses = ['cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span', 'font-bold'];
+                        const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
+                        
                         container.append(moveSpan).append(' ');
 
                         if (moveData.comments) {
                             container.append(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em> `);
                         }
-
+                        
                         if (moveData.variants && moveData.variants.length > 0) {
                             for (const variant of moveData.variants) {
                                 const variantContainer = $('<div class="ml-4 border-l-2 border-gray-300 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
-                                renderTree(variant, variantContainer, gameHistory);
+                                renderTree(variant, variantContainer, new Chess(fenBeforeMove));
                             }
                         }
-                        gameHistory.push(moveData.san);
                     }
                 }
                         
@@ -381,7 +382,7 @@
 
                 if (pgnData) {
                     const moveTree = pgnToTree(pgnData);
-                    renderTree(moveTree, $('#pgn-tree-container'), []);
+                    renderTree(moveTree, $('#pgn-tree-container'), new Chess());
                     board.position('start');
                 } else {
                     $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
@@ -392,7 +393,7 @@
                     const fen = $(this).data('fen');
                     if (fen) {
                         board.position(fen);
-                        game.load(fen);
+                        mainGame.load(fen);
                         $('.move-span').removeClass('bg-yellow-200');
                         $(this).addClass('bg-yellow-200');
                         if (isAnalyzing) analyzePosition();
