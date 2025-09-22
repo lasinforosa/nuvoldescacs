@@ -157,10 +157,13 @@
                 // === LA NOVA I MILLORADA FUNCIÓ renderTree ===
                 function renderTree(node, container, gameHistory, isVariant = false) {
                     
-                    let localGame = new Chess(game.fen());
-
                     for (let i = 0; i < node.moves.length; i++) {
                         const moveData = node.moves[i];
+
+                        // Creem una instància de joc LOCAL per a aquesta seqüència
+                        let localGame = new Chess();
+                        // Reconstruïm la història fins a aquest punt
+                        moveHistory.forEach(san => localGame.move(san));
                         
                         const turn = localGame.turn();
                         const moveNumber = Math.floor(localGame.history().length / 2) + 1;
@@ -171,7 +174,6 @@
                             container.append(`<span class="font-bold mr-1">${moveNumber}...</span>`);
                         }
                         
-                        const fenBeforeMove = localGame.fen();
                         const moveResult = localGame.move(moveData.san, { sloppy: true });
                         if (!moveResult) {
                             // Si la jugada és invàlida (com un número), la mostrem en vermell i parem
@@ -187,14 +189,20 @@
                         if (moveData.comments) {
                             container.append(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em> `);
                         }
+
+                        // Creem una còpia de l'historial actual per a la línia principal
+                        let mainLineHistory = [...moveHistory, moveData.san];
                         
                         if (moveData.variants && moveData.variants.length > 0) {
                             for (const variant of moveData.variants) {
                                 const variantContainer = $('<div class="ml-4 border-l-2 border-gray-300 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
-                                renderTree(variant, variantContainer, new Chess(fenBeforeMove));
+                                // La recursió comença amb l'historial fins a la jugada ANTERIOR
+                                renderTree(variant, variantContainer, [...moveHistory]);
                             }
                         }
+                        // Actualitzem l'historial per a la següent jugada de la línia actual
+                        moveHistory = mainLineHistory;
                     }
                 }
                         
@@ -382,7 +390,8 @@
 
                 if (pgnData) {
                     const moveTree = pgnToTree(pgnData);
-                    renderTree(moveTree, $('#pgn-tree-container'), new Chess());
+                    renderTree(moveTree, $('#pgn-tree-container'), , []));  
+                    // Comencem amb un historial buit
                     board.position('start');
                 } else {
                     $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
