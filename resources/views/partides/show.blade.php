@@ -78,9 +78,9 @@
                             </div>
                             <div class="mt-4 p-4 bg-gray-100 rounded">
                                 <h4 class="font-semibold">Notació:</h4>
-                                <div id="pgn-tree-container" class="font-mono text-sm mt-2 whitespace-normal h-64 overflow-y-auto"></div>
-                            </div>
-                            <div id="analysis-container" class="mt-4 p-3 bg-gray-800 text-white rounded-lg font-mono text-sm hidden">
+                                <div id="pgn-tree-container" class="font-mono text-sm mt-2 whitespace-normal h-96 overflow-y-auto"></div>
+                                </div>
+                                <div id="analysis-container" class="mt-4 p-3 bg-gray-800 text-white rounded-lg font-mono text-sm hidden">
                                 <div id="analysis-evaluation">Valoració: --</div>
                                 <div id="analysis-best-line" class="mt-1">Millor línia: --</div>
                             </div>
@@ -124,11 +124,8 @@
 
                 // --- 2. FUNCIONS ---
                 function pgnToTree(pgn) {
-                    const pgnWithoutNewlines = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
-                    
-                    // Expressió regular millorada per ignorar explícitament els números de jugada
-                    const tokens = pgnWithoutNewlines.match(/\(|\)|\{[^}]*\}|\$\d+|O-O-O|O-O|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
-                    
+                    const pgnClean = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
+                    const tokens = pgnClean.match(/\(|\)|\{[^}]*\}|\$\d+|O-O-O|O-O|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
                     let tree = { moves: [] };
                     let path = [tree];
                     for (const token of tokens) {
@@ -155,54 +152,33 @@
                 }
 
                 // === LA NOVA I MILLORADA FUNCIÓ renderTree ===
-                function renderTree(node, container, gameHistory, isVariant = false) {
-                    
-                    for (let i = 0; i < node.moves.length; i++) {
-                        const moveData = node.moves[i];
+                function renderTree(node, container, gameInstance, isVariant = false) {
+                    for (const moveData of node.moves) {
+                        const fenBeforeMove = gameInstance.fen();
+                        const moveResult = gameInstance.move(moveData.san, { sloppy: true });
+                        if (!moveResult) continue;
 
-                        // Creem una instància de joc LOCAL per a aquesta seqüència
-                        let localGame = new Chess();
-                        // Reconstruïm la història fins a aquest punt
-                        moveHistory.forEach(san => localGame.move(san));
-                        
-                        const turn = localGame.turn();
-                        const moveNumber = Math.floor(localGame.history().length / 2) + 1;
-                        
-                        if (turn === 'w') {
-                            container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);
-                        } else if (i === 0) {
-                            container.append(`<span class="font-bold mr-1">${moveNumber}...</span>`);
+                        if (moveResult.color === 'w') {
+                            container.append(`<span class="font-bold mr-1">${moveResult.fullMoveNumber}.</span>`);
+                        } else if (isVariant && container.children().length === 0) {
+                            container.append(`<span class="font-bold mr-1">${moveResult.fullMoveNumber-1}...</span>`);
                         }
                         
-                        const moveResult = localGame.move(moveData.san, { sloppy: true });
-                        if (!moveResult) {
-                            // Si la jugada és invàlida (com un número), la mostrem en vermell i parem
-                            container.append(`<span class="text-red-500 font-bold p-1">${moveData.san}</span> `);
-                            continue;
-                        };
-
-                        const moveClasses = ['cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span', 'font-bold'];
-                        const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
-                        
+                        const moveClasses = ['cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span', isVariant ? 'font-normal text-gray-700' : 'font-bold'];
+                        const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${gameInstance.fen()}">${moveData.san}</span>`);
                         container.append(moveSpan).append(' ');
 
                         if (moveData.comments) {
                             container.append(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em> `);
                         }
-
-                        // Creem una còpia de l'historial actual per a la línia principal
-                        let mainLineHistory = [...moveHistory, moveData.san];
                         
                         if (moveData.variants && moveData.variants.length > 0) {
                             for (const variant of moveData.variants) {
                                 const variantContainer = $('<div class="ml-4 border-l-2 border-gray-300 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
-                                // La recursió comença amb l'historial fins a la jugada ANTERIOR
-                                renderTree(variant, variantContainer, [...moveHistory]);
+                                renderTree(variant, variantContainer, new Chess(fenBeforeMove), true);
                             }
                         }
-                        // Actualitzem l'historial per a la següent jugada de la línia actual
-                        moveHistory = mainLineHistory;
                     }
                 }
                         
@@ -288,13 +264,9 @@
                 
                 function analyzePosition() { 
                     if (!isAnalyzing || !isStockfishReady) return;
-                    clearTimeout(analysisDebounceTimeout);
-                    analysisDebounceTimeout = setTimeout(() => {
-                        stockfish.postMessage('stop');
-                        // LA CLAU: Sempre utilitzem el FEN de l'objecte 'game' principal
-                        stockfish.postMessage('position fen ' + game.fen()); 
-                        stockfish.postMessage('go depth 18');
-                    }, 250);
+                    stockfish.postMessage('stop');
+                    stockfish.postMessage('position fen ' + game.fen());
+                    stockfish.postMessage('go depth 18');
                 }
 
                 function initializeStockfish() { 
@@ -385,24 +357,19 @@
                 }
 
                 // --- 3. INICIALITZACIÓ I GESTORS D'ESDEVENIMENTS ---
+                let boardConfig = { draggable: false, position: 'start', pieceTheme: '/img/chesspieces/wikipedia/{piece}.png' };
                 board = Chessboard('board', boardConfig);
                 setBoardTheme('brown');
+                const moveTree = pgnToTree(pgnData || '');
+                renderTree(moveTree, $('#pgn-tree-container'), new Chess());
+                board.position('start');
 
-                if (pgnData) {
-                    const moveTree = pgnToTree(pgnData);
-                    renderTree(moveTree, $('#pgn-tree-container'), , []));  
-                    // Comencem amb un historial buit
-                    board.position('start');
-                } else {
-                    $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
-                }
-
-                // Gestor de clics (ara funciona)
+                // --- 5. GESTORS D'ESDEVENIMENTS ---
                 $('#pgn-tree-container').on('click', '.move-span', function() {
                     const fen = $(this).data('fen');
                     if (fen) {
                         board.position(fen);
-                        mainGame.load(fen);
+                        game.load(fen); // AQUESTA ÉS LA LÍNIA CLAU
                         $('.move-span').removeClass('bg-yellow-200');
                         $(this).addClass('bg-yellow-200');
                         if (isAnalyzing) analyzePosition();
@@ -411,41 +378,30 @@
 
 
                 // Desactivem els botons de navegació seqüencial
-                $('#startBtn, #prevBtn, #nextBtn, #endBtn').prop('disabled', true).addClass('opacity-50 cursor-not-allowed');
-                /*
-                $('#startBtn').on('click', () => { game.reset(); currentMoveIndex = -1; updateView(); });
-                $('#prevBtn').on('click', () => { if(currentMoveIndex >= 0) { game.undo(); currentMoveIndex--; updateView(); }});
-                $('#nextBtn').on('click', () => { if(currentMoveIndex < history.length - 1) { currentMoveIndex++; game.move(history[currentMoveIndex].san); updateView(); }});
-                $('#endBtn').on('click', () => { game.load_pgn(pgnData || ''); currentMoveIndex = history.length - 1; updateView(); });
-                */
-
-                
-                // CONTROL DEL TAULER (AMB LA CORRECCIÓ PER A 'flip')
-                $('#flipBtn').on('click', () => {
-                    board.flip();
-                    // Tornem a aplicar el tema de colors després de girar
-                    setBoardTheme($('#board-theme').val());
-                });
-
+                $('#startBtn, #prevBtn, #nextBtn, #endBtn').prop('disabled', true).addClass('opacity-50');
+                $('#flipBtn').on('click', () => { board.flip(); setBoardTheme($('#board-theme').val()); });
                 $('#analyzeBtn').on('click', () => setAnalysisState(!isAnalyzing));
-                
+
                 $('#piece-theme').on('change', function() {
                     const selected = $(this).find('option:selected');
                     boardConfig.pieceTheme = `/img/chesspieces/${selected.val()}/{piece}.${selected.data('format')}`;
                     boardConfig.position = board.fen();
                     redrawBoard();
                 });
-                $('#board-theme').on('change', () => setBoardTheme($('#board-theme').val()));
-
+                $('#board-theme').on('change', () => setBoardTheme($(this).val()));
+                
+                /*
                 $(document).on('keydown', function(e) {
                     if (e.key === 'ArrowLeft') { e.preventDefault(); $('#prevBtn').click(); }
                     if (e.key === 'ArrowRight') { e.preventDefault(); $('#nextBtn').click(); }
                     if (e.key === 'Home') { e.preventDefault(); $('#startBtn').click(); }
                     if (e.key === 'End') { e.preventDefault(); $('#endBtn').click(); }
                 });
+                */
 
                 $(window).on('beforeunload', () => { if (stockfish) stockfish.terminate(); });
             });
+              
         </script>
     </x-slot>
 </x-app-layout>
