@@ -103,8 +103,12 @@
             $(document).ready(function() {
                 // --- 1. VARIABLES I DADES ---
                 let board = null;
-                const game = new Chess();  // L'estat del joc que l'usuari està veient
+                const mainGame = new Chess();
+                // const game = new Chess();  // L'estat del joc que l'usuari està veient
                 const pgnData = @json($partida->pgn_moves);
+                // DEBUG
+                dd(pgnData);
+
                 let history = [];
                 let currentMoveIndex = -1;
                 
@@ -124,8 +128,8 @@
 
                 // --- 2. FUNCIONS ---
                 function pgnToTree(pgn) {
-                    const pgnClean = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
-                    const tokens = pgnClean.match(/\(|\)|\{[^}]*\}|\$\d+|O-O-O|O-O|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
+                    const pgnWithoutNewlines = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
+                    const tokens = pgnWithoutNewlines.match(/\(|\)|\{[^}]*\}|\$\d+|O-O-O|O-O|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
                     let tree = { moves: [] };
                     let path = [tree];
                     for (const token of tokens) {
@@ -152,26 +156,24 @@
                 }
 
                 // === LA NOVA I MILLORADA FUNCIÓ renderTree ===
-                function renderTree(node, container, gameInstance, isVariant = false) {
+                function renderTree(node, container, game, isVariant = false) {
+                    let localGame = new Chess(game.fen());
+                    if (isVariant) { container.append('<span class="text-indigo-500 mr-1">&raquo;</span>'); }
                     for (const moveData of node.moves) {
-                        const fenBeforeMove = gameInstance.fen();
-                        const moveResult = gameInstance.move(moveData.san, { sloppy: true });
+                        const turn = localGame.turn();
+                        const moveNumber = Math.floor(localGame.history().length / 2) + 1;
+                        if (turn === 'w') {
+                            container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);
+                        } else if (isVariant && container.children().length <= 1) { // <=1 per comptar el '»'
+                            container.append(`<span class="font-bold mr-1">${moveNumber - 1}...</span>`);
+                        }
+                        const fenBeforeMove = localGame.fen();
+                        const moveResult = localGame.move(moveData.san, { sloppy: true });
                         if (!moveResult) continue;
-
-                        if (moveResult.color === 'w') {
-                            container.append(`<span class="font-bold mr-1">${moveResult.fullMoveNumber}.</span>`);
-                        } else if (isVariant && container.children().length === 0) {
-                            container.append(`<span class="font-bold mr-1">${moveResult.fullMoveNumber-1}...</span>`);
-                        }
-                        
                         const moveClasses = ['cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span', isVariant ? 'font-normal text-gray-700' : 'font-bold'];
-                        const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${gameInstance.fen()}">${moveData.san}</span>`);
+                        const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
                         container.append(moveSpan).append(' ');
-
-                        if (moveData.comments) {
-                            container.append(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em> `);
-                        }
-                        
+                        if (moveData.comments) { container.append(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em> `); }
                         if (moveData.variants && moveData.variants.length > 0) {
                             for (const variant of moveData.variants) {
                                 const variantContainer = $('<div class="ml-4 border-l-2 border-gray-300 pl-2 mt-1"></div>');
@@ -181,18 +183,39 @@
                         }
                     }
                 }
-                        
-                // FUNCIONS
- 
+
                 function loadGameFromPgn() {
                     try {
                         const tempGame = new Chess();
                         tempGame.load_pgn(pgnData || '');
                         history = tempGame.history({ verbose: true });
                     } catch (e) {
-                        $('#pgn-tree-container').html('<p class="text-red-500">Error: PGN invàlid.</p>');
+                        $('#pgn-display').html('<p class="text-red-500">Error: PGN invàlid.</p>');
                         history = [];
                     }
+                }
+
+                function renderPgn() {
+                    let pgnHtml = '';
+                    let moveNumber = 1;
+                    history.forEach((move, i) => {
+                        if (move.color === 'w') { pgnHtml += `<span class="font-bold mr-1">${moveNumber}.</span>`; }
+                        const moveStyle = (i === currentMoveIndex) ? 'bg-yellow-200' : '';
+                        pgnHtml += `<span class="${moveStyle} p-1 rounded cursor-pointer move-span" data-move-index="${i}">${move.san}</span> `;
+                        if (move.color === 'b') { moveNumber++; }
+                    });
+                    $('#pgn-display').html(pgnHtml);
+                }
+
+                function goToMove(index) {
+                    game.reset();
+                    for (let i = 0; i <= index; i++) {
+                        game.move(history[i].san);
+                    }
+                    currentMoveIndex = index;
+                    board.position(game.fen());
+                    renderPgn();
+                    if (isAnalyzing) analyzePosition();
                 }
 
                 function renderPgnTree() {
@@ -219,22 +242,6 @@
                         if (history[i].color === 'b') { moveNumber++; }
                     }
                     $('#pgn-tree-container').html(pgnHtml);
-                }
-
-                function goToMove(index) {
-                    game.reset();
-                    for (let i = 0; i <= index; i++) {
-                        game.move(history[i].san);
-                    }
-                    currentMoveIndex = index;
-                    board.position(game.fen());
-                    
-                    $('.move-span').removeClass('bg-yellow-200');
-                    if (index > -1) {
-                        $(`.move-span[data-move-index=${index}]`).addClass('bg-yellow-200');
-                    }
-                    
-                    if (isAnalyzing) analyzePosition();
                 }
 
                 function updateView() {
@@ -357,49 +364,77 @@
                 }
 
                 // --- 3. INICIALITZACIÓ I GESTORS D'ESDEVENIMENTS ---
+                /*
                 let boardConfig = { draggable: false, position: 'start', pieceTheme: '/img/chesspieces/wikipedia/{piece}.png' };
                 board = Chessboard('board', boardConfig);
                 setBoardTheme('brown');
                 const moveTree = pgnToTree(pgnData || '');
                 renderTree(moveTree, $('#pgn-tree-container'), new Chess());
                 board.position('start');
+                */
+                // const boardConfig = { draggable: false, position: 'start', pieceTheme: '/img/chesspieces/wikipedia/{piece}.png' };
+                board = Chessboard('board', boardConfig);
+                setBoardTheme('brown');
+                const moveTree = pgnToTree(pgnData || '');
+                renderTree(moveTree, $('#pgn-tree-container'), new Chess());
+                board.position('start');
 
-                // --- 5. GESTORS D'ESDEVENIMENTS ---
+                // --- 4. GESTORS D'ESDEVENIMENTS ---
                 $('#pgn-tree-container').on('click', '.move-span', function() {
                     const fen = $(this).data('fen');
                     if (fen) {
                         board.position(fen);
-                        game.load(fen); // AQUESTA ÉS LA LÍNIA CLAU
+                        mainGame.load(fen);
                         $('.move-span').removeClass('bg-yellow-200');
                         $(this).addClass('bg-yellow-200');
                         if (isAnalyzing) analyzePosition();
                     }
                 });
 
+                // Navegació per la línia principal
+                function goToMainlineMove(index) {
+                    if (index < -1 || index >= history.length) return;
+                    currentMoveIndex = index;
+                    mainGame.reset();
+                    for(let i = 0; i <= index; i++) {
+                        mainGame.move(history[i].san);
+                    }
+                    board.position(mainGame.fen());
+                    $('.move-span').removeClass('bg-yellow-200');
+                    // Aquesta part de ressaltat és més complexa ara, la deixem pendent
+                    if(isAnalyzing) analyzePosition();
+                }
 
-                // Desactivem els botons de navegació seqüencial
-                $('#startBtn, #prevBtn, #nextBtn, #endBtn').prop('disabled', true).addClass('opacity-50');
+
+                $('#pgn-display').on('click', '.move-span', function() {
+                    goToMove($(this).data('move-index'));
+                });
+
+                $('#startBtn').on('click', () => goToMainlineMove(-1));
+                $('#prevBtn').on('click', () => goToMainlineMove(currentMoveIndex - 1));
+                $('#nextBtn').on('click', () => goToMainlineMove(currentMoveIndex + 1));
+                $('#endBtn').on('click', () => goToMainlineMove(history.length - 1));
+
                 $('#flipBtn').on('click', () => { board.flip(); setBoardTheme($('#board-theme').val()); });
                 $('#analyzeBtn').on('click', () => setAnalysisState(!isAnalyzing));
-
+                
                 $('#piece-theme').on('change', function() {
                     const selected = $(this).find('option:selected');
                     boardConfig.pieceTheme = `/img/chesspieces/${selected.val()}/{piece}.${selected.data('format')}`;
                     boardConfig.position = board.fen();
                     redrawBoard();
                 });
-                $('#board-theme').on('change', () => setBoardTheme($(this).val()));
-                
-                /*
+                $('#board-theme').on('change', () => setBoardTheme($('#board-theme').val()));
+
                 $(document).on('keydown', function(e) {
                     if (e.key === 'ArrowLeft') { e.preventDefault(); $('#prevBtn').click(); }
                     if (e.key === 'ArrowRight') { e.preventDefault(); $('#nextBtn').click(); }
                     if (e.key === 'Home') { e.preventDefault(); $('#startBtn').click(); }
                     if (e.key === 'End') { e.preventDefault(); $('#endBtn').click(); }
                 });
-                */
 
                 $(window).on('beforeunload', () => { if (stockfish) stockfish.terminate(); });
+            
             });
               
         </script>
