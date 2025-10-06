@@ -106,9 +106,7 @@
                 const mainGame = new Chess();
                 // const game = new Chess();  // L'estat del joc que l'usuari està veient
                 const pgnData = @json($partida->pgn_moves);
-                // DEBUG
-                dd(pgnData);
-
+                
                 let history = [];
                 let currentMoveIndex = -1;
                 
