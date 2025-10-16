@@ -10,69 +10,79 @@ use Illuminate\Support\Facades\DB;
 
 class JugadorController extends Controller
 {
-    /**
-     * Mostra una llista de totes les identitats de jugador.
-     */
     public function index()
     {
-        // Obtenim totes les identitats i comptem les seves partides de manera eficient
+        // La funció withCount és més eficient que carregar totes les partides
         $identitats = IdentitatJugador::withCount(['partidesBlanques', 'partidesNegres'])
                                         ->orderBy('nom', 'asc')
                                         ->get();
-        return view('jugadors.index', ['identitats' => $identitats]);
+
+        return view('jugadors.index', [
+            'identitats' => $identitats,
+        ]);
     }
 
-    /**
-     * Aquesta serà la funció per fusionar les identitats. La deixem preparada.
-     */
     public function merge(Request $request)
     {
-        // 1. Validació
+        // 1. Validació de les dades que arriben del formulari
         $validated = $request->validate([
             'master_id' => 'required|integer|exists:identitats_jugador,id_identitat',
             'identitat_ids' => 'required|array|min:2',
             'identitat_ids.*' => 'integer|exists:identitats_jugador,id_identitat',
+        ], [
+            'master_id.required' => 'Has de seleccionar una identitat com a principal.',
+            'identitat_ids.min' => 'Has de seleccionar almenys dues identitats per fusionar.',
         ]);
 
         $masterId = $validated['master_id'];
-        $allIds = $validated['identitat_ids'];
+        $allSelectedIds = $validated['identitat_ids'];
 
-        // Assegurem que la mestra està dins de les seleccionades
-        if (!in_array($masterId, $allIds)) {
-            return back()->withErrors('La identitat principal ha de ser una de les seleccionades.');
+        // Comprovació de seguretat: la identitat mestra ha de ser una de les seleccionades.
+        if (!in_array($masterId, $allSelectedIds)) {
+            return back()->withErrors('La identitat principal ha de ser una de les seleccionades amb el checkbox.');
         }
 
-        // Separem les identitats "esclaves"
-        $slaveIds = array_diff($allIds, [$masterId]);
+        // Separem els IDs "esclaus" (els que seran fusionats i eliminats)
+        $slaveIds = array_diff($allSelectedIds, [$masterId]);
         
         $masterIdentity = IdentitatJugador::findOrFail($masterId);
         $masterPersonId = $masterIdentity->id_persona;
 
+        // Comencem una transacció. Si alguna cosa falla, tot es desfarà.
+        DB::beginTransaction();
         try {
-            DB::beginTransaction();
+            // 2. Reassignem les partides on les identitats esclaves jugaven amb BLANQUES
+            Partida::whereIn('id_identitat_blanques', $slaveIds)
+                   ->update(['id_identitat_blanques' => $masterId]);
 
-            // 2. Reassignem partides
-            Partida::whereIn('id_identitat_blanques', $slaveIds)->update(['id_identitat_blanques' => $masterId]);
-            Partida::whereIn('id_identitat_negres', $slaveIds)->update(['id_identitat_negres' => $masterId]);
+            // 3. Reassignem les partides on jugaven amb NEGRES
+            Partida::whereIn('id_identitat_negres', $slaveIds)
+                   ->update(['id_identitat_negres' => $masterId]);
 
-            // 3. Associem totes les identitats esclaves a la persona mestra (per mantenir l'historial)
-            // Aquesta és una alternativa a esborrar-les
+            // 4. (Opcional, però recomanat) Reassignem totes les identitats a la mateixa Persona
+            // Això manté un historial, encara que les esborrem després.
+            $slavePersonIds = IdentitatJugador::whereIn('id_identitat', $slaveIds)->pluck('id_persona')->unique();
             IdentitatJugador::whereIn('id_identitat', $slaveIds)->update(['id_persona' => $masterPersonId]);
-            
-            // 4. Eliminem les identitats esclaves (ara ja no tenen partides)
+
+            // 5. Eliminem les identitats "esclaves", que ja no tenen cap partida associada
             IdentitatJugador::whereIn('id_identitat', $slaveIds)->delete();
 
-            // 5. Netegem les persones que han quedat òrfenes
-            Persona::whereDoesntHave('identitats')->delete();
+            // 6. Netegem les 'Persones' que han quedat òrfenes (sense cap identitat)
+            // No esborrem la persona mestra, només les esclaves que hagin quedat buides.
+            Persona::whereIn('id_persona', $slavePersonIds)
+                   ->whereDoesntHave('identitats')
+                   ->delete();
 
+            // Si tot ha anat bé, confirmem els canvis a la base de dades
             DB::commit();
+
         } catch (\Exception $e) {
+            // Si hi ha qualsevol error, desfem tots els canvis
             DB::rollBack();
-            return back()->withErrors('Error durant la fusió: ' . $e->getMessage());
+            return back()->withErrors('Error inesperat durant la fusió: ' . $e->getMessage());
         }
 
         return redirect()->route('jugadors.index')
                          ->with('success', count($slaveIds) . ' identitat(s) han estat fusionades correctament a "' . $masterIdentity->nom . '".');
     }
 }
-   
