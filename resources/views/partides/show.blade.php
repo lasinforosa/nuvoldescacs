@@ -153,7 +153,6 @@
                     return tree;
                 }
 
-                // === LA NOVA I MILLORADA FUNCIÓ renderTree ===
                 function renderTree(node, container, game, isVariant = false) {
                     let localGame = new Chess(game.fen());
                     if (isVariant) { container.append('<span class="text-indigo-500 mr-1">&raquo;</span>'); }
@@ -361,23 +360,54 @@
                     $('#eval-bar-black').css({ 'height': `${100 - whiteHeight}%`, 'width': '100%' });
                 }
 
+                function goToMainlineMove(index) {
+                    if (index < -1 || index >= history.length) return;
+
+                    currentMoveIndex = index;
+                    mainGame.reset();
+                    for (let i = 0; i <= index; i++) {
+                        mainGame.move(history[i].san);
+                    }
+                    
+                    board.position(mainGame.fen());
+
+                    // Ressaltem la jugada correcta a la notació
+                    $('.move-span').removeClass('bg-yellow-200');
+                    if (index > -1) {
+                        // Busquem el span que correspon a la línia principal amb aquest índex
+                        // Aquesta és una solució simple, potser haurem de refinar-la
+                        const mainLineSpans = $('#pgn-tree-container > .move-span');
+                        $(mainLineSpans.get(index)).addClass('bg-yellow-200');
+                    }
+                    
+                    if (isAnalyzing) analyzePosition();
+                }
+
+
                 // --- 3. INICIALITZACIÓ I GESTORS D'ESDEVENIMENTS ---
-                /*
-                let boardConfig = { draggable: false, position: 'start', pieceTheme: '/img/chesspieces/wikipedia/{piece}.png' };
                 board = Chessboard('board', boardConfig);
                 setBoardTheme('brown');
-                const moveTree = pgnToTree(pgnData || '');
-                renderTree(moveTree, $('#pgn-tree-container'), new Chess());
-                board.position('start');
-                */
-                // const boardConfig = { draggable: false, position: 'start', pieceTheme: '/img/chesspieces/wikipedia/{piece}.png' };
-                board = Chessboard('board', boardConfig);
-                setBoardTheme('brown');
-                const moveTree = pgnToTree(pgnData || '');
-                renderTree(moveTree, $('#pgn-tree-container'), new Chess());
-                board.position('start');
+
+                if (pgnData) {
+                    // Omplim l'historial de la línia principal per a la navegació
+                    try {
+                        const tempGame = new Chess();
+                        tempGame.load_pgn(pgnData);
+                        history = tempGame.history({ verbose: true });
+                    } catch(e) {
+                        history = [];
+                    }
+
+                    const moveTree = pgnToTree(pgnData);
+                    $('#pgn-tree-container').empty(); // Buidem abans de renderitzar
+                    renderTree(moveTree, $('#pgn-tree-container'), new Chess());
+                    goToMove(-1); // Anem a la posició inicial
+                } else {
+                    $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
+                }
 
                 // --- 4. GESTORS D'ESDEVENIMENTS ---
+                // Clic a qualsevol jugada (principal o variant)
                 $('#pgn-tree-container').on('click', '.move-span', function() {
                     const fen = $(this).data('fen');
                     if (fen) {
@@ -389,25 +419,7 @@
                     }
                 });
 
-                // Navegació per la línia principal
-                function goToMainlineMove(index) {
-                    if (index < -1 || index >= history.length) return;
-                    currentMoveIndex = index;
-                    mainGame.reset();
-                    for(let i = 0; i <= index; i++) {
-                        mainGame.move(history[i].san);
-                    }
-                    board.position(mainGame.fen());
-                    $('.move-span').removeClass('bg-yellow-200');
-                    // Aquesta part de ressaltat és més complexa ara, la deixem pendent
-                    if(isAnalyzing) analyzePosition();
-                }
-
-
-                $('#pgn-display').on('click', '.move-span', function() {
-                    goToMove($(this).data('move-index'));
-                });
-
+                // Botons de navegació per a la LÍNIA PRINCIPAL
                 $('#startBtn').on('click', () => goToMainlineMove(-1));
                 $('#prevBtn').on('click', () => goToMainlineMove(currentMoveIndex - 1));
                 $('#nextBtn').on('click', () => goToMainlineMove(currentMoveIndex + 1));
@@ -424,6 +436,7 @@
                 });
                 $('#board-theme').on('change', () => setBoardTheme($('#board-theme').val()));
 
+                // Controls del teclat (ara haurien de funcionar)
                 $(document).on('keydown', function(e) {
                     if (e.key === 'ArrowLeft') { e.preventDefault(); $('#prevBtn').click(); }
                     if (e.key === 'ArrowRight') { e.preventDefault(); $('#nextBtn').click(); }
