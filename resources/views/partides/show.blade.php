@@ -378,21 +378,18 @@
                 // --- 3. INICIALITZACIÓ I GESTORS D'ESDEVENIMENTS ---
                 board = Chessboard('board', boardConfig);
                 setBoardTheme('brown');
-
+                
                 if (pgnData) {
-                    // Omplim l'historial de la línia principal per a la navegació
+                    const tempGame = new Chess();
                     try {
-                        const tempGame = new Chess();
                         tempGame.load_pgn(pgnData);
-                        history = tempGame.history({ verbose: true });
-                    } catch(e) {
-                        history = [];
+                        history = tempGame.history({ verbose: true }); // Guardem la línia principal
+                        const moveTree = pgnToTree(pgnData);
+                        renderTree(moveTree, $('#pgn-tree-container'), new Chess());
+                        goToMainlineMove(-1);
+                    } catch (e) {
+                        $('#pgn-tree-container').html('<p class="text-red-500">Error: PGN invàlid o amb format no suportat.</p>');
                     }
-
-                    const moveTree = pgnToTree(pgnData);
-                    $('#pgn-tree-container').empty(); // Buidem abans de renderitzar
-                    renderTree(moveTree, $('#pgn-tree-container'), new Chess());
-                    goToMove(-1); // Anem a la posició inicial
                 } else {
                     $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
                 }
@@ -403,7 +400,7 @@
                     const fen = $(this).data('fen');
                     if (fen) {
                         board.position(fen);
-                        mainGame.load(fen);
+                        game.load(fen);
                         $('.move-span').removeClass('bg-yellow-200');
                         $(this).addClass('bg-yellow-200');
                         if (isAnalyzing) analyzePosition();
@@ -427,7 +424,6 @@
                 });
                 $('#board-theme').on('change', () => setBoardTheme($('#board-theme').val()));
 
-                // Controls del teclat (ara haurien de funcionar)
                 $(document).on('keydown', function(e) {
                     if (e.key === 'ArrowLeft') { e.preventDefault(); $('#prevBtn').click(); }
                     if (e.key === 'ArrowRight') { e.preventDefault(); $('#nextBtn').click(); }
@@ -436,7 +432,6 @@
                 });
 
                 $(window).on('beforeunload', () => { if (stockfish) stockfish.terminate(); });
-            
             });
               
         </script>
