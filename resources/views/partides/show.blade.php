@@ -101,27 +101,22 @@
         <script>
 
             $(document).ready(function() {
-                // --- 1. VARIABLES I DADES ---
+                // --- 1. VARIABLES ---
                 let board = null;
-                const mainGame = new Chess();
-                // const game = new Chess();  // L'estat del joc que l'usuari està veient
+                const game = new Chess(); // Joc principal que veu l'usuari
                 const pgnData = @json($partida->pgn_moves);
-                
-                let history = [];
+                let history = []; // L'historial de la línia principal
                 let currentMoveIndex = -1;
-                
                 let boardConfig = {
                     draggable: false,
                     position: 'start',
                     pieceTheme: '/img/chesspieces/wikipedia/{piece}.png'
                 };
-                
                 const colorThemes = {
                     brown: { light: '#f0d9b5', dark: '#b58863' },
                     green: { light: '#e8e8e8', dark: '#7c986d' },
                     blue:  { light: '#dee3e6', dark: '#8ca2ad' }
                 };
-                
                 let stockfish = null, isAnalyzing = false, isStockfishReady = false, analysisDebounceTimeout = null;
 
                 // --- 2. FUNCIONS ---
