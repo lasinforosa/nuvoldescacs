@@ -121,8 +121,8 @@
 
                 // --- 2. FUNCIONS ---
                 function pgnToTree(pgn) {
-                    const pgnWithoutNewlines = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
-                    const tokens = pgnWithoutNewlines.match(/\(|\)|\{[^}]*\}|\$\d+|O-O-O|O-O|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
+                    const pgnClean = pgn.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, ' ');
+                    const tokens = pgnClean.match(/\(|\)|\{[^}]*\}|\$\d+|O-O-O|O-O|[NBKRQ]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBQR])?[+#?!=]*/g) || [];
                     let tree = { moves: [] };
                     let path = [tree];
                     for (const token of tokens) {
@@ -357,24 +357,20 @@
 
                 function goToMainlineMove(index) {
                     if (index < -1 || index >= history.length) return;
-
                     currentMoveIndex = index;
-                    mainGame.reset();
+                    game.reset();
                     for (let i = 0; i <= index; i++) {
-                        mainGame.move(history[i].san);
+                        game.move(history[i].san);
                     }
+                    board.position(game.fen());
                     
-                    board.position(mainGame.fen());
-
-                    // Ressaltem la jugada correcta a la notació
+                    // Actualitza el ressaltat del PGN
                     $('.move-span').removeClass('bg-yellow-200');
                     if (index > -1) {
-                        // Busquem el span que correspon a la línia principal amb aquest índex
-                        // Aquesta és una solució simple, potser haurem de refinar-la
-                        const mainLineSpans = $('#pgn-tree-container > .move-span');
+                        const mainLineSpans = $('#pgn-tree-container').children('.move-span');
                         $(mainLineSpans.get(index)).addClass('bg-yellow-200');
                     }
-                    
+
                     if (isAnalyzing) analyzePosition();
                 }
 
