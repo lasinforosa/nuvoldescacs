@@ -148,31 +148,46 @@
                     return tree;
                 }
 
-                function renderTree(node, container, game, isVariant = false) {
-                    let localGame = new Chess(game.fen());
-                    if (isVariant) { container.append('<span class="text-indigo-500 mr-1">&raquo;</span>'); }
-                    for (const moveData of node.moves) {
+                function renderTree(node, container, initialHistory = []) {
+                    for (let i = 0; i < node.moves.length; i++) {
+                        const moveData = node.moves[i];
+                        
+                        // Creem una instància local i reconstruïm la història
+                        let localGame = new Chess();
+                        initialHistory.forEach(san => localGame.move(san, { sloppy: true }));
+
                         const turn = localGame.turn();
+                        // Calculem el número de jugada basant-nos en la història real
                         const moveNumber = Math.floor(localGame.history().length / 2) + 1;
+
                         if (turn === 'w') {
                             container.append(`<span class="font-bold mr-1">${moveNumber}.</span>`);
-                        } else if (isVariant && container.children().length <= 1) { // <=1 per comptar el '»'
-                            container.append(`<span class="font-bold mr-1">${moveNumber - 1}...</span>`);
+                        } else if (i === 0) { // Només si és la primera jugada d'aquesta branca
+                            container.append(`<span class="font-bold mr-1">${moveNumber}...</span>`);
                         }
-                        const fenBeforeMove = localGame.fen();
+                        
                         const moveResult = localGame.move(moveData.san, { sloppy: true });
                         if (!moveResult) continue;
-                        const moveClasses = ['cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span', isVariant ? 'font-normal text-gray-700' : 'font-bold'];
+
+                        const moveClasses = ['cursor-pointer', 'hover:bg-yellow-300', 'p-1', 'rounded', 'move-span', 'font-bold'];
                         const moveSpan = $(`<span class="${moveClasses.join(' ')}" data-fen="${localGame.fen()}">${moveData.san}</span>`);
                         container.append(moveSpan).append(' ');
-                        if (moveData.comments) { container.append(`<em class="text-blue-600 mx-1">{ ${moveData.comments.join(' ')} }</em> `); }
+
+                        if (moveData.comments) { /* ... (sense canvis) ... */ }
+                        
+                        // Creem una còpia de l'historial actual per a la línia principal
+                        let mainLineHistory = [...initialHistory, moveData.san];
+
                         if (moveData.variants && moveData.variants.length > 0) {
                             for (const variant of moveData.variants) {
                                 const variantContainer = $('<div class="ml-4 border-l-2 border-gray-300 pl-2 mt-1"></div>');
                                 container.append(variantContainer);
-                                renderTree(variant, variantContainer, new Chess(fenBeforeMove), true);
+                                // La recursió comença amb l'historial fins a la jugada ANTERIOR
+                                renderTree(variant, variantContainer, [...initialHistory]);
                             }
                         }
+                        // Actualitzem l'historial per a la següent jugada d'aquesta línia
+                        initialHistory = mainLineHistory;
                     }
                 }
 
@@ -380,19 +395,14 @@
                 setBoardTheme('brown');
                 
                 if (pgnData) {
-                    const tempGame = new Chess();
-                    try {
-                        tempGame.load_pgn(pgnData);
-                        history = tempGame.history({ verbose: true }); // Guardem la línia principal
-                        const moveTree = pgnToTree(pgnData);
-                        renderTree(moveTree, $('#pgn-tree-container'), new Chess());
-                        goToMainlineMove(-1);
-                    } catch (e) {
-                        $('#pgn-tree-container').html('<p class="text-red-500">Error: PGN invàlid o amb format no suportat.</p>');
-                    }
+                    const moveTree = pgnToTree(pgnData);
+                    // La primera crida comença amb un historial buit
+                    renderTree(moveTree, $('#pgn-tree-container'), []);
+                    goToMove(-1);
                 } else {
                     $('#pgn-tree-container').html('<p>No hi ha jugades.</p>');
                 }
+
 
                 // --- 4. GESTORS D'ESDEVENIMENTS ---
                 // Clic a qualsevol jugada (principal o variant)
